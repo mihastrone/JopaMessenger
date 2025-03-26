@@ -326,7 +326,6 @@ const messages = [];
 const users = {}; // Хранит socketId -> username
 const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
-const rooms = new Map(); // Хранение приватных комнат
 
 // Класс для сообщений с расширенными атрибутами
 class Message {
@@ -343,7 +342,7 @@ class Message {
   }
 }
 
-// Класс для приватных комнат
+// Класс для приватных комнат - объявляем раньше, чем используем
 class Room {
   constructor(id, name, creator) {
     this.id = id;
