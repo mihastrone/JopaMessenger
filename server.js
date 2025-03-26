@@ -77,6 +77,9 @@ let bannedUsers = new Map();
 // Инициализация словаря аватаров пользователей
 let userAvatars = {};
 
+// Инициализация карты комнат
+let rooms = new Map();
+
 // Загружаем забаненных пользователей при запуске
 if (fs.existsSync(BANNED_USERS_FILE)) {
     try {
@@ -133,7 +136,6 @@ try {
     const roomsData = fs.readFileSync(ROOMS_FILE, 'utf8');
     const roomsArray = JSON.parse(roomsData);
     // Преобразуем массив обратно в структуру комнат
-    rooms = new Map();
     roomsArray.forEach(roomData => {
       const room = new Room(roomData.id, roomData.name, roomData.creator);
       room.members = new Set(roomData.members);
@@ -155,7 +157,7 @@ try {
 } catch (error) {
   console.error(`Ошибка при работе с файлом комнат: ${error.message}`);
   // Продолжаем с пустым списком комнат
-  rooms = new Map();
+  // rooms уже определена как new Map() выше
 }
 
 // Функция сохранения пользователей в файл с дополнительной обработкой ошибок для Railway
@@ -1433,6 +1435,7 @@ class UserManager {
   constructor() {
     // Инициализируем коллекции
     this.bannedUsers = bannedUsers;
+    this.rooms = rooms;
     
     this.loadUsers();
     this.loadBannedUsers();
@@ -1516,17 +1519,19 @@ class UserManager {
         const roomsArray = JSON.parse(roomsData);
         
         // Преобразуем массив обратно в Map
-        rooms = new Map();
+        this.rooms = new Map();
+        rooms = this.rooms; // Обновляем глобальную переменную
+        
         roomsArray.forEach(roomData => {
           const room = new Room(roomData.id, roomData.name, roomData.creator);
           room.members = new Set(roomData.members);
           room.autoDeleteEnabled = roomData.autoDeleteEnabled;
           room.messageLifetime = roomData.messageLifetime;
           room.messages = roomData.messages || [];
-          rooms.set(roomData.id, room);
+          this.rooms.set(roomData.id, room);
         });
         
-        console.log(`Загружено ${rooms.size} комнат`);
+        console.log(`Загружено ${this.rooms.size} комнат`);
       } else {
         // Создаем пустой файл комнат
         fs.writeFileSync(ROOMS_FILE, JSON.stringify([]), 'utf8');
@@ -1535,7 +1540,8 @@ class UserManager {
     } catch (error) {
       console.error(`Ошибка при загрузке комнат: ${error.message}`);
       // Продолжаем с пустым списком комнат
-      rooms = new Map();
+      this.rooms = new Map();
+      rooms = this.rooms; // Обновляем глобальную переменную
     }
   }
   
@@ -1602,7 +1608,7 @@ class UserManager {
   saveRooms() {
     try {
       // Преобразуем Map в массив объектов для сохранения
-      const roomsArray = Array.from(rooms.values()).map(room => {
+      const roomsArray = Array.from(this.rooms.values()).map(room => {
         // Возвращаем сериализуемый объект комнаты
         return {
           id: room.id,
