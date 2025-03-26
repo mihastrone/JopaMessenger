@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalImage = document.getElementById('modal-image');
     
     // Настройки приватных комнат
-    let currentRoom = null;
+    let currentRoom = 'general';
     let rooms = new Map(); // Хранилище комнат и их настроек
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
     let cachedMessages = new Map(); // Кэш сообщений для каждой комнаты (включая общий чат)
@@ -63,9 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Настройки звуков
     let soundSettings = {
         enabled: true,
-        volume: 0.7,
-        sendSound: 'send-1.mp3',
-        receiveSound: 'Message_get.wav'
+        volume: 0.5,
+        sendSound: 'message-sent.mp3',
+        receiveSound: 'message-received.mp3'
     };
 
     let socket;
@@ -347,8 +347,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 loginScreen.style.display = 'none';
                 chatScreen.style.display = 'flex';
                 
-                // Инициализируем UI
+                // Инициализируем UI, обязательно делаем это только после успешной авторизации
                 initializeUI();
+                
+                // Загружаем настройки
+                loadSettings();
             } else {
                 // Ошибка авторизации
                 console.error('Ошибка авторизации:', result.message);
@@ -377,8 +380,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 loginScreen.style.display = 'none';
                 chatScreen.style.display = 'flex';
                 
-                // Инициализируем UI
+                // Инициализируем UI, обязательно делаем это только после успешной регистрации
                 initializeUI();
+                
+                // Загружаем настройки
+                loadSettings();
             } else {
                 // Ошибка регистрации
                 console.error('Ошибка регистрации:', result.message);
@@ -539,6 +545,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentRoom === roomId) {
                 addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
             }
+        });
+        
+        // Получение истории сообщений комнаты
+        socket.on('room_messages', (messages) => {
+            messagesContainer.innerHTML = '';
+            
+            // Кэшируем сообщения комнаты
+            const messageElements = [];
+            
+            messages.forEach(message => {
+                const element = addMessageToUI(message);
+                if (element) {
+                    messageElements.push(element.cloneNode(true));
+                }
+            });
+            
+            if (currentRoom) {
+                cachedMessages.set(currentRoom, messageElements);
+            }
+            
+            scrollToBottom();
         });
     }
 
@@ -776,12 +803,515 @@ document.addEventListener('DOMContentLoaded', () => {
         shouldScrollToBottom = isAtBottom;
     });
 
-    // Инициализация интерфейса
+    // Инициализация для неавторизованной части приложения
     initAuthTabs();
     checkSavedCredentials();
     
-    // Остальные загрузки и инициализации
-    loadSettings();
+    // Инициализация только звуковых настроек на старте
     loadSoundSettings();
     initializeUI();
+    
+    // Добавление обработчика отправки сообщений для формы
+    const messageForm = document.getElementById('message-form');
+    if (messageForm) {
+        messageForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
+    }
+    
+    // Обработчик кнопки отправки сообщения
+    if (sendButton) {
+        sendButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
+    }
+    
+    // Обработчик отправки по Enter
+    if (messageInput) {
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+
+    // Воспроизведение звука отправки сообщения
+    function playSendSound() {
+        if (!soundSettings.enabled) return;
+        
+        const audio = new Audio(`sounds/${soundSettings.sendSound}`);
+        audio.volume = soundSettings.volume;
+        audio.play().catch(error => {
+            console.error('Ошибка воспроизведения звука отправки:', error);
+        });
+    }
+    
+    // Воспроизведение звука получения сообщения
+    function playReceiveSound() {
+        if (!soundSettings.enabled) return;
+        
+        const audio = new Audio(`sounds/${soundSettings.receiveSound}`);
+        audio.volume = soundSettings.volume;
+        audio.play().catch(error => {
+            console.error('Ошибка воспроизведения звука получения:', error);
+        });
+    }
+    
+    // Добавление кнопки настроек звука
+    function addSoundSettingsButton() {
+        const settingsPanel = document.querySelector('.settings-panel');
+        if (!settingsPanel) return;
+        
+        // Создаем элемент настроек звука, если его ещё нет
+        if (!document.getElementById('sound-settings')) {
+            const soundSettingsHtml = `
+                <div class="setting-item" id="sound-settings">
+                    <label>Звук:</label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="sound-toggle" ${soundSettings.enabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </div>
+                </div>
+            `;
+            
+            // Добавляем в панель настроек
+            const div = document.createElement('div');
+            div.innerHTML = soundSettingsHtml;
+            settingsPanel.appendChild(div.firstElementChild);
+            
+            // Обработчик переключения звука
+            const soundToggle = document.getElementById('sound-toggle');
+            if (soundToggle) {
+                soundToggle.addEventListener('change', (e) => {
+                    soundSettings.enabled = e.target.checked;
+                    saveSoundSettings();
+                });
+            }
+        }
+    }
+    
+    // Сохранение настроек звука
+    function saveSoundSettings() {
+        localStorage.setItem('sound_settings', JSON.stringify(soundSettings));
+    }
+    
+    // Загрузка настроек звука
+    function loadSoundSettings() {
+        try {
+            const saved = JSON.parse(localStorage.getItem('sound_settings'));
+            if (saved) {
+                soundSettings = { ...soundSettings, ...saved };
+            }
+        } catch (error) {
+            console.error('Ошибка при загрузке настроек звука:', error);
+        }
+    }
+
+    // Вызываем добавление кнопки настроек звука в функции initializeUI
+    function initializeUI() {
+        setupRoomHandlers();
+        setupThemeHandler();
+        setupOtherImageHandlers();
+        addSoundSettingsButton();
+    }
+    
+    // Настройка обработчиков комнат
+    function setupRoomHandlers() {
+        // Кнопка создания комнаты
+        if (createRoomButton) {
+            createRoomButton.addEventListener('click', () => {
+                // Запрашиваем имя комнаты
+                const roomName = prompt('Введите название комнаты:');
+                if (roomName && roomName.trim()) {
+                    // Генерируем случайный ID комнаты
+                    const roomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                    
+                    // Отправляем запрос на создание комнаты
+                    socket.emit('create_room', { 
+                        roomId, 
+                        roomName: roomName.trim(),
+                        creator: username,
+                        autoDeleteEnabled,
+                        messageLifetime
+                    });
+                    
+                    // Обновляем список комнат
+                    rooms.set(roomId, { name: roomName.trim(), autoDeleteEnabled, messageLifetime });
+                    saveSettings();
+                    updateRoomsList();
+                    
+                    // Сразу переключаемся на новую комнату
+                    joinRoom(roomId);
+                }
+            });
+        }
+        
+        // Обработчик списка комнат
+        if (roomsList) {
+            roomsList.addEventListener('click', (e) => {
+                if (e.target.classList.contains('room-button')) {
+                    const roomId = e.target.dataset.roomid;
+                    
+                    if (currentRoom === roomId) {
+                        // Выход из комнаты при повторном клике
+                        leaveRoom();
+                    } else {
+                        // Вход в комнату
+                        joinRoom(roomId);
+                    }
+                } else if (e.target.classList.contains('room-delete')) {
+                    const roomId = e.target.dataset.roomid;
+                    if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
+                        socket.emit('delete_room', { roomId });
+                    }
+                }
+            });
+        }
+        
+        // Обработчики автоудаления
+        if (autoDeleteToggle) {
+            autoDeleteToggle.addEventListener('change', (e) => {
+                autoDeleteEnabled = e.target.checked;
+                
+                if (currentRoom) {
+                    const room = rooms.get(currentRoom);
+                    if (room) {
+                        room.autoDeleteEnabled = autoDeleteEnabled;
+                    }
+                }
+                
+                saveSettings();
+            });
+        }
+        
+        if (deleteTimeSelect) {
+            deleteTimeSelect.addEventListener('change', (e) => {
+                messageLifetime = parseInt(e.target.value);
+                
+                if (currentRoom) {
+                    const room = rooms.get(currentRoom);
+                    if (room) {
+                        room.messageLifetime = messageLifetime;
+                    }
+                }
+                
+                saveSettings();
+            });
+        }
+        
+        // Загружаем и обновляем список комнат
+        updateRoomsList();
+    }
+    
+    // Обновление списка комнат
+    function updateRoomsList() {
+        if (!roomsList) return;
+        
+        roomsList.innerHTML = '';
+        
+        // Сначала общий чат
+        const generalRoomElement = document.createElement('div');
+        generalRoomElement.classList.add('room-item');
+        generalRoomElement.innerHTML = `
+            <button class="room-button ${currentRoom === null ? 'active' : ''}" data-roomid="general">
+                Общий чат
+            </button>
+        `;
+        roomsList.appendChild(generalRoomElement);
+        
+        // Затем все остальные комнаты
+        rooms.forEach((room, roomId) => {
+            const roomElement = document.createElement('div');
+            roomElement.classList.add('room-item');
+            roomElement.innerHTML = `
+                <button class="room-button ${currentRoom === roomId ? 'active' : ''}" data-roomid="${roomId}">
+                    ${room.name}
+                </button>
+                <button class="room-delete" data-roomid="${roomId}">&times;</button>
+            `;
+            roomsList.appendChild(roomElement);
+        });
+    }
+    
+    // Вход в комнату
+    function joinRoom(roomId) {
+        if (roomId === 'general') {
+            // Если выбран общий чат
+            leaveRoom(); // Сначала выходим из текущей комнаты
+            return;
+        }
+        
+        socket.emit('join_room', { roomId });
+        
+        const roomName = rooms.get(roomId)?.name || roomId;
+        addSystemMessageToUI(`Вы вошли в комнату: ${roomName}`);
+        
+        currentRoom = roomId;
+        updateRoomsList();
+        
+        // Очищаем контейнер сообщений
+        messagesContainer.innerHTML = '';
+        
+        // Загружаем кэшированные сообщения если они есть
+        if (cachedMessages.has(roomId)) {
+            const roomMessages = cachedMessages.get(roomId);
+            roomMessages.forEach(msg => {
+                messagesContainer.appendChild(msg.cloneNode(true));
+            });
+        }
+    }
+    
+    // Выход из комнаты
+    function leaveRoom() {
+        if (currentRoom) {
+            socket.emit('leave_room', { roomId: currentRoom });
+            
+            const roomName = rooms.get(currentRoom)?.name || currentRoom;
+            addSystemMessageToUI(`Вы вышли из комнаты: ${roomName}`);
+            
+            currentRoom = null;
+            updateRoomsList();
+            
+            // Очищаем контейнер сообщений
+            messagesContainer.innerHTML = '';
+            
+            // Загружаем кэшированные сообщения общего чата
+            if (cachedMessages.has('general')) {
+                const generalMessages = cachedMessages.get('general');
+                generalMessages.forEach(msg => {
+                    messagesContainer.appendChild(msg.cloneNode(true));
+                });
+            }
+            
+            // Оповещаем сервер, что нужно получить актуальные сообщения общего чата
+            socket.emit('get_messages');
+        }
+    }
+    
+    // Сохранение настроек комнат
+    function saveSettings() {
+        const settings = {};
+        rooms.forEach((room, roomId) => {
+            settings[roomId] = {
+                name: room.name,
+                autoDeleteEnabled: room.autoDeleteEnabled,
+                messageLifetime: room.messageLifetime
+            };
+        });
+        
+        localStorage.setItem('chat_rooms', JSON.stringify(settings));
+        localStorage.setItem('auto_delete_enabled', JSON.stringify(autoDeleteEnabled));
+        localStorage.setItem('message_lifetime', JSON.stringify(messageLifetime));
+    }
+    
+    // Загрузка настроек комнат
+    function loadSettings() {
+        try {
+            const savedRooms = JSON.parse(localStorage.getItem('chat_rooms')) || {};
+            rooms = new Map(Object.entries(savedRooms));
+            
+            const savedAutoDelete = JSON.parse(localStorage.getItem('auto_delete_enabled'));
+            if (savedAutoDelete !== null) {
+                autoDeleteEnabled = savedAutoDelete;
+                if (autoDeleteToggle) {
+                    autoDeleteToggle.checked = autoDeleteEnabled;
+                }
+            }
+            
+            const savedLifetime = JSON.parse(localStorage.getItem('message_lifetime'));
+            if (savedLifetime) {
+                messageLifetime = savedLifetime;
+                if (deleteTimeSelect) {
+                    deleteTimeSelect.value = messageLifetime;
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки настроек:', error);
+        }
+    }
+    
+    // Настройка обработчика темы
+    function setupThemeHandler() {
+        const themeToggle = document.getElementById('theme-toggle');
+        const darkThemeStylesheet = document.getElementById('dark-theme');
+        
+        if (!themeToggle || !darkThemeStylesheet) return;
+        
+        // Загружаем сохраненную тему
+        const isDarkTheme = localStorage.getItem('dark_theme') === 'true';
+        darkThemeStylesheet.disabled = !isDarkTheme;
+        themeToggle.checked = isDarkTheme;
+        
+        // Обработчик изменения темы
+        themeToggle.addEventListener('change', (e) => {
+            const isDark = e.target.checked;
+            darkThemeStylesheet.disabled = !isDark;
+            localStorage.setItem('dark_theme', isDark);
+            
+            // Применяем темную тему к документу
+            if (isDark) {
+                document.body.classList.add('dark-theme');
+            } else {
+                document.body.classList.remove('dark-theme');
+            }
+        });
+        
+        // Применяем темную тему к документу если она была включена
+        if (isDarkTheme) {
+            document.body.classList.add('dark-theme');
+        }
+    }
+    
+    // Настройка обработчиков изображений
+    function setupOtherImageHandlers() {
+        // Обработчик загрузки изображения
+        if (imageUpload) {
+            imageUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    processImage(file);
+                }
+            });
+        }
+        
+        // Обработчик превью и удаления изображения
+        if (removeImageButton) {
+            removeImageButton.addEventListener('click', () => {
+                clearImagePreviews();
+            });
+        }
+        
+        // Обработчик просмотра полноразмерного изображения
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('message-image')) {
+                openImageModal(e.target.src);
+            }
+        });
+        
+        // Обработчик закрытия модального окна с изображением
+        if (imageModal) {
+            imageModal.addEventListener('click', (e) => {
+                if (e.target === imageModal) {
+                    closeImageModal();
+                }
+            });
+        }
+        
+        // Обработчик вставки изображений из буфера обмена
+        document.addEventListener('paste', (e) => {
+            if (document.activeElement === messageInput) {
+                const items = e.clipboardData.items;
+                
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        const blob = items[i].getAsFile();
+                        processImage(blob);
+                        
+                        // Предотвращаем вставку в текстовое поле
+                        e.preventDefault();
+                        break;
+                    }
+                }
+            }
+        });
+    }
+    
+    // Обработка изображения
+    function processImage(file) {
+        if (!file || file.type.indexOf('image') === -1) return;
+        
+        // Проверка размера файла (до сжатия)
+        if (file.size > MAX_IMAGE_SIZE * 2) {
+            alert(`Файл слишком большой. Максимальный размер: ${MAX_IMAGE_SIZE / 1024}KB`);
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                // Сжимаем изображение, если оно слишком большое
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Уменьшаем размер, сохраняя пропорции
+                if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
+                    if (width > height) {
+                        // Ландшафтная ориентация
+                        height = height * (MAX_IMAGE_WIDTH / width);
+                        width = MAX_IMAGE_WIDTH;
+                    } else {
+                        // Портретная ориентация
+                        width = width * (MAX_IMAGE_HEIGHT / height);
+                        height = MAX_IMAGE_HEIGHT;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Конвертируем в JPEG с указанным качеством
+                const dataURL = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+                
+                // Проверка размера после сжатия
+                const base64Size = dataURL.length * 3 / 4; // Приблизительный размер в байтах
+                if (base64Size > MAX_IMAGE_SIZE) {
+                    alert(`Изображение слишком большое даже после сжатия. Пожалуйста, используйте меньшее изображение.`);
+                    return;
+                }
+                
+                // Сохраняем и показываем превью
+                currentImage = dataURL;
+                
+                // Отображаем превью
+                if (imagePreview && imagePreviewContainer) {
+                    imagePreview.src = dataURL;
+                    imagePreviewContainer.style.display = 'flex';
+                }
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    // Очистка превью изображений
+    function clearImagePreviews() {
+        if (imagePreviewContainer) {
+            imagePreviewContainer.style.display = 'none';
+        }
+        
+        if (imagePreview) {
+            imagePreview.src = '';
+        }
+        
+        // Сбрасываем значение input
+        if (imageUpload) {
+            imageUpload.value = '';
+        }
+        
+        currentImage = null;
+    }
+    
+    // Открытие модального окна с изображением
+    function openImageModal(imgSrc) {
+        if (!imageModal || !modalImage) return;
+        
+        modalImage.src = imgSrc;
+        imageModal.style.display = 'flex';
+    }
+    
+    // Закрытие модального окна с изображением
+    function closeImageModal() {
+        if (!imageModal) return;
+        
+        imageModal.style.display = 'none';
+        modalImage.src = '';
+    }
 }); 

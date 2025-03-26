@@ -403,17 +403,25 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Получаем имя пользователя
+    const username = users[socket.id];
+    if (!username) {
+      socket.emit('error', { message: 'Вы не авторизованы' });
+      return;
+    }
+
     // Добавляем пользователя в комнату
-    room.members.add(users[socket.id]);
+    room.members.add(username);
     socket.join(roomId);
     
-    // Отправляем историю сообщений комнаты
+    // Отправляем историю сообщений комнаты используя специальное событие
     socket.emit('room_messages', room.messages);
     
     // Оповещаем всех участников комнаты о новом пользователе
-    const username = users[socket.id];
+    const displayName = activeUsers[username]?.displayName || username;
     io.to(roomId).emit('user_joined_room', { 
       username, 
+      displayName,
       roomId, 
       roomName: room.name 
     });
@@ -421,7 +429,7 @@ io.on('connection', (socket) => {
     // Оповещаем присоединившегося пользователя
     socket.emit('room_joined', { roomId, roomName: room.name });
     
-    console.log(`Пользователь ${users[socket.id]} присоединился к комнате ${room.name}`);
+    console.log(`Пользователь ${username} (${displayName}) присоединился к комнате ${room.name}`);
   });
 
   // Выход из комнаты
