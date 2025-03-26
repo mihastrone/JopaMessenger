@@ -146,17 +146,30 @@ class UserManager {
     try {
       if (fs.existsSync(BANNED_USERS_FILE)) {
         const bannedData = fs.readFileSync(BANNED_USERS_FILE, 'utf8');
-        const bannedArray = JSON.parse(bannedData);
-        
-        // Очищаем текущие данные
-        this.bannedUsers.clear();
-        
-        // Преобразуем массив в Map
-        bannedArray.forEach(([username, banInfo]) => {
-          this.bannedUsers.set(username, banInfo);
-        });
-        
-        console.log(`Загружено ${this.bannedUsers.size} забаненных пользователей`);
+        try {
+          const bannedArray = JSON.parse(bannedData);
+          
+          // Проверяем, действительно ли это массив
+          if (Array.isArray(bannedArray)) {
+            // Очищаем текущие данные
+            this.bannedUsers.clear();
+            
+            // Преобразуем массив в Map
+            bannedArray.forEach(([username, banInfo]) => {
+              this.bannedUsers.set(username, banInfo);
+            });
+            
+            console.log(`Загружены данные о ${this.bannedUsers.size} забаненных пользователях`);
+          } else {
+            console.log('Файл забаненных пользователей содержит некорректные данные (не массив), создаем новый');
+            this.bannedUsers.clear();
+            this.saveBannedUsers();
+          }
+        } catch (parseError) {
+          console.log('Ошибка при парсинге файла забаненных пользователей:', parseError.message);
+          this.bannedUsers.clear();
+          this.saveBannedUsers();
+        }
       } else {
         // Создаем пустой файл забаненных пользователей
         fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify([]), 'utf8');
