@@ -81,6 +81,26 @@ let userAvatars = {};
 // Инициализация карты комнат
 let rooms = new Map();
 
+// Загрузка списка администраторов из файла
+let admins = new Set();
+try {
+  if (fs.existsSync(ADMINS_FILE)) {
+    const adminsData = fs.readFileSync(ADMINS_FILE, 'utf8');
+    const adminsArray = JSON.parse(adminsData);
+    // Преобразуем массив обратно в Set
+    admins = new Set(adminsArray);
+    console.log(`Загружено ${admins.size} администраторов`);
+  } else {
+    // Создаем пустой файл администраторов
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify([]), 'utf8');
+    console.log('Создан новый файл администраторов');
+  }
+} catch (error) {
+  console.error(`Ошибка при работе с файлом администраторов: ${error.message}`);
+  // Продолжаем с пустым списком администраторов
+  admins = new Set();
+}
+
 // Создаем экземпляр менеджера пользователей и инициализируем его
 const userManager = new UserManager({
   userDatabase: userDatabase,
@@ -119,26 +139,6 @@ if (fs.existsSync(USER_AVATARS_FILE)) {
     } catch (error) {
         console.error('Ошибка при загрузке аватаров пользователей:', error);
     }
-}
-
-// Загрузка списка администраторов из файла
-let admins = new Set();
-try {
-  if (fs.existsSync(ADMINS_FILE)) {
-    const adminsData = fs.readFileSync(ADMINS_FILE, 'utf8');
-    const adminsArray = JSON.parse(adminsData);
-    // Преобразуем массив обратно в Set
-    admins = new Set(adminsArray);
-    console.log(`Загружено ${admins.size} администраторов`);
-  } else {
-    // Создаем пустой файл администраторов
-    fs.writeFileSync(ADMINS_FILE, JSON.stringify([]), 'utf8');
-    console.log('Создан новый файл администраторов');
-  }
-} catch (error) {
-  console.error(`Ошибка при работе с файлом администраторов: ${error.message}`);
-  // Продолжаем с пустым списком администраторов
-  admins = new Set();
 }
 
 // Загрузка комнат из файла
