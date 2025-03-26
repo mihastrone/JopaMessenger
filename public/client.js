@@ -450,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageElement = addMessageToUI(message);
             
             // Если это сообщение для общего чата, добавляем его в кэш
-            if (currentRoom === null && messageElement) {
+            if (currentRoom === 'general' && messageElement) {
                 if (!cachedMessages.has('general')) {
                     cachedMessages.set('general', []);
                 }
@@ -757,51 +757,76 @@ document.addEventListener('DOMContentLoaded', () => {
         statusIndicator.classList.add(status);
     }
 
-    // Очистка всех таймеров при закрытии страницы
+    // Сохранение кэша сообщений в localStorage
+    function saveCachedMessages() {
+        try {
+            const cachesToSave = {};
+            cachedMessages.forEach((messages, roomId) => {
+                // Сохраняем только текстовые содержимые сообщений, без DOM элементов
+                const textsToSave = messages.map(msg => {
+                    // Извлекаем только текст и информацию о сообщении
+                    const username = msg.querySelector('.username')?.textContent || '';
+                    const timestamp = msg.querySelector('.timestamp')?.textContent || '';
+                    const content = msg.querySelector('.message-content')?.textContent || '';
+                    const isSystem = msg.classList.contains('system');
+                    return { username, timestamp, content, isSystem };
+                });
+                cachesToSave[roomId] = textsToSave;
+            });
+            
+            localStorage.setItem('cached_messages', JSON.stringify(cachesToSave));
+        } catch (error) {
+            console.error('Ошибка при сохранении кэша сообщений:', error);
+        }
+    }
+    
+    // Загрузка кэша сообщений из localStorage
+    function loadCachedMessages() {
+        try {
+            const savedCaches = JSON.parse(localStorage.getItem('cached_messages'));
+            if (!savedCaches) return;
+            
+            // Восстанавливаем сообщения как DOM элементы
+            Object.entries(savedCaches).forEach(([roomId, messages]) => {
+                const messageElements = messages.map(msg => {
+                    const element = document.createElement('div');
+                    element.className = 'message';
+                    if (msg.isSystem) {
+                        element.classList.add('system');
+                        element.textContent = msg.content;
+                    } else {
+                        element.innerHTML = `
+                            <div class="message-header">
+                                <span class="username">${escapeHtml(msg.username)}</span>
+                                <span class="timestamp">${msg.timestamp}</span>
+                            </div>
+                            <div class="message-content">${escapeHtml(msg.content)}</div>
+                        `;
+                    }
+                    return element;
+                });
+                
+                if (messageElements.length > 0) {
+                    cachedMessages.set(roomId, messageElements);
+                }
+            });
+        } catch (error) {
+            console.error('Ошибка при загрузке кэша сообщений:', error);
+        }
+    }
+    
+    // Сохраняем кэш сообщений при закрытии страницы
     window.addEventListener('beforeunload', () => {
+        saveCachedMessages();
+        
         Object.values(messageTimers).forEach(timers => {
             clearTimeout(timers.deletionTimer);
             clearInterval(timers.countdownInterval);
         });
     });
-
-    // Модифицированная функция отправки сообщения
-    function sendMessage() {
-        const text = messageInput.value.trim();
-        
-        // Если нет ни текста, ни изображения
-        if (!text && !currentImage) return;
-        
-        const message = {
-            text,
-            username,
-            displayName,
-            timestamp: Date.now(),
-            roomId: currentRoom,
-            hasImage: !!currentImage,
-            image: currentImage
-        };
-        
-        socket.emit('message', message);
-        messageInput.value = '';
-        
-        // Очищаем изображение после отправки
-        if (currentImage) {
-            currentImage = null;
-            imagePreview.src = '';
-            imagePreviewContainer.style.display = 'none';
-            imageUpload.value = '';
-        }
-        
-        playSendSound();
-    }
-
-    // Обработчик прокрутки чата
-    messagesContainer.addEventListener('scroll', () => {
-        // Проверяем, находится ли пользователь близко к нижней части чата
-        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
-        shouldScrollToBottom = isAtBottom;
-    });
+    
+    // Загружаем кэш сообщений при инициализации
+    loadCachedMessages();
 
     // Инициализация для неавторизованной части приложения
     initAuthTabs();
@@ -1016,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const generalRoomElement = document.createElement('div');
         generalRoomElement.classList.add('room-item');
         generalRoomElement.innerHTML = `
-            <button class="room-button ${currentRoom === null ? 'active' : ''}" data-roomid="general">
+            <button class="room-button ${currentRoom === 'general' ? 'active' : ''}" data-roomid="general">
                 Общий чат
             </button>
         `;
@@ -1044,6 +1069,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        // Запоминаем текущую комнату для сохранения сообщений
+        if (currentRoom && currentRoom !== 'general') {
+            // Сохраняем сообщения текущей комнаты перед переходом
+            const messages = [];
+            const messageElements = messagesContainer.querySelectorAll('.message');
+            messageElements.forEach(elem => {
+                messages.push(elem.cloneNode(true));
+            });
+            
+            if (messages.length > 0) {
+                cachedMessages.set(currentRoom, messages);
+            }
+        }
+        
         socket.emit('join_room', { roomId });
         
         const roomName = rooms.get(roomId)?.name || roomId;
@@ -1061,18 +1100,30 @@ document.addEventListener('DOMContentLoaded', () => {
             roomMessages.forEach(msg => {
                 messagesContainer.appendChild(msg.cloneNode(true));
             });
+            scrollToBottom();
         }
     }
     
     // Выход из комнаты
     function leaveRoom() {
         if (currentRoom) {
+            // Сохраняем сообщения текущей комнаты перед выходом
+            const messages = [];
+            const messageElements = messagesContainer.querySelectorAll('.message');
+            messageElements.forEach(elem => {
+                messages.push(elem.cloneNode(true));
+            });
+            
+            if (messages.length > 0) {
+                cachedMessages.set(currentRoom, messages);
+            }
+            
             socket.emit('leave_room', { roomId: currentRoom });
             
             const roomName = rooms.get(currentRoom)?.name || currentRoom;
             addSystemMessageToUI(`Вы вышли из комнаты: ${roomName}`);
             
-            currentRoom = null;
+            currentRoom = 'general';
             updateRoomsList();
             
             // Очищаем контейнер сообщений
@@ -1084,6 +1135,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 generalMessages.forEach(msg => {
                     messagesContainer.appendChild(msg.cloneNode(true));
                 });
+                scrollToBottom();
             }
             
             // Оповещаем сервер, что нужно получить актуальные сообщения общего чата
@@ -1135,33 +1187,33 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Настройка обработчика темы
     function setupThemeHandler() {
-        const themeToggle = document.getElementById('theme-toggle');
-        const darkThemeStylesheet = document.getElementById('dark-theme');
+        const themeSelect = document.getElementById('theme-select');
         
-        if (!themeToggle || !darkThemeStylesheet) return;
+        if (!themeSelect) return;
         
         // Загружаем сохраненную тему
-        const isDarkTheme = localStorage.getItem('dark_theme') === 'true';
-        darkThemeStylesheet.disabled = !isDarkTheme;
-        themeToggle.checked = isDarkTheme;
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        
+        // Устанавливаем выбранное значение в списке
+        themeSelect.value = savedTheme;
+        
+        // Применяем тему при загрузке
+        applyTheme(savedTheme);
         
         // Обработчик изменения темы
-        themeToggle.addEventListener('change', (e) => {
-            const isDark = e.target.checked;
-            darkThemeStylesheet.disabled = !isDark;
-            localStorage.setItem('dark_theme', isDark);
-            
-            // Применяем темную тему к документу
-            if (isDark) {
-                document.body.classList.add('dark-theme');
-            } else {
-                document.body.classList.remove('dark-theme');
-            }
+        themeSelect.addEventListener('change', (e) => {
+            const theme = e.target.value;
+            applyTheme(theme);
+            localStorage.setItem('theme', theme);
         });
-        
-        // Применяем темную тему к документу если она была включена
-        if (isDarkTheme) {
+    }
+    
+    // Применение темы
+    function applyTheme(theme) {
+        if (theme === 'dark') {
             document.body.classList.add('dark-theme');
+        } else {
+            document.body.classList.remove('dark-theme');
         }
     }
     
@@ -1314,4 +1366,42 @@ document.addEventListener('DOMContentLoaded', () => {
         imageModal.style.display = 'none';
         modalImage.src = '';
     }
+
+    // Модифицированная функция отправки сообщения
+    function sendMessage() {
+        const text = messageInput.value.trim();
+        
+        // Если нет ни текста, ни изображения
+        if (!text && !currentImage) return;
+        
+        const message = {
+            text,
+            username,
+            displayName,
+            timestamp: Date.now(),
+            roomId: currentRoom,
+            hasImage: !!currentImage,
+            image: currentImage
+        };
+        
+        socket.emit('message', message);
+        messageInput.value = '';
+        
+        // Очищаем изображение после отправки
+        if (currentImage) {
+            currentImage = null;
+            imagePreview.src = '';
+            imagePreviewContainer.style.display = 'none';
+            imageUpload.value = '';
+        }
+        
+        playSendSound();
+    }
+
+    // Обработчик прокрутки чата
+    messagesContainer.addEventListener('scroll', () => {
+        // Проверяем, находится ли пользователь близко к нижней части чата
+        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+        shouldScrollToBottom = isAtBottom;
+    });
 }); 

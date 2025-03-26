@@ -862,4 +862,141 @@ input:checked + .toggle-slider:before {
 
 .dark-theme .remember-me {
     color: #aaa;
+}
+
+/* Стили для комнат и их кнопок */
+.room-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.room-button {
+    flex: 1;
+    padding: 8px 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    color: #333;
+    outline: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.room-button.active {
+    background-color: #4a90e2;
+    color: white;
+    border-color: #3a80d2;
+}
+
+.room-button:hover {
+    background-color: #e0e0e0;
+}
+
+.room-button.active:hover {
+    background-color: #3a80d2;
+}
+
+.room-delete {
+    margin-left: 5px;
+    width: 24px;
+    height: 24px;
+    background-color: #ff4d4d;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+}
+
+.room-delete:hover {
+    background-color: #ff3333;
+}
+
+.create-room-btn {
+    width: 100%;
+    padding: 8px 10px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: background-color 0.2s ease;
+}
+
+.create-room-btn:hover {
+    background-color: #3a80d2;
+}
+
+/* Тёмная тема */
+body.dark-theme {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+}
+
+body.dark-theme .app {
+    background-color: #2d2d2d;
+}
+
+body.dark-theme .chat-header,
+body.dark-theme .sidebar,
+body.dark-theme .chat-container,
+body.dark-theme .footer {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border-color: #444;
+}
+
+body.dark-theme input,
+body.dark-theme textarea,
+body.dark-theme select,
+body.dark-theme button {
+    background-color: #3d3d3d;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+body.dark-theme .message {
+    background-color: #3d3d3d;
+    border-color: #555;
+}
+
+body.dark-theme .message.own {
+    background-color: #2b5278;
+}
+
+body.dark-theme .message.system {
+    background-color: #3d3d3d;
+    color: #aaa;
+}
+
+body.dark-theme .room-button {
+    background-color: #3d3d3d;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+body.dark-theme .room-button.active {
+    background-color: #2b5278;
+    color: white;
+    border-color: #1d4266;
+}
+
+body.dark-theme .room-button:hover {
+    background-color: #4d4d4d;
+}
+
+body.dark-theme .room-button.active:hover {
+    background-color: #1d4266;
 } 
