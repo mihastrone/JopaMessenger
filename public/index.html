@@ -52,23 +52,19 @@
                         <ul id="user-list"></ul>
                     </div>
                     
+                    <div class="private-rooms">
+                        <h3>Приватные комнаты</h3>
+                        <button id="create-room-button" class="create-room-btn">Создать комнату</button>
+                        <ul id="rooms-list"></ul>
+                    </div>
+                    
                     <div class="settings-panel">
                         <h3>Настройки</h3>
                         <div class="setting-item">
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="auto-delete-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <span>Автоудаление</span>
-                        </div>
-                        <div class="setting-item">
-                            <label for="delete-time-select">Время удаления:</label>
-                            <select id="delete-time-select">
-                                <option value="15000">15 секунд</option>
-                                <option value="20000">20 секунд</option>
-                                <option value="30000" selected>30 секунд</option>
-                                <option value="60000">1 минута</option>
-                                <option value="300000">5 минут</option>
+                            <label for="theme-select">Тема:</label>
+                            <select id="theme-select">
+                                <option value="light">Светлая</option>
+                                <option value="dark">Тёмная</option>
                             </select>
                         </div>
                     </div>
@@ -78,7 +74,17 @@
                     <div class="messages-container" id="messages-container"></div>
                     
                     <div class="message-input-container">
+                        <div class="image-preview-container" id="image-preview-container">
+                            <img id="image-preview" class="image-preview">
+                            <button class="remove-image" id="remove-image">×</button>
+                        </div>
                         <textarea id="message-input" placeholder="Введите сообщение..."></textarea>
+                        <label for="image-upload" class="image-upload-label" title="Прикрепить изображение">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM19 19H5V5H19V19ZM14.14 11.86L11.14 15.73L9 13.14L6 17H18L14.14 11.86Z" fill="#4a90e2"/>
+                            </svg>
+                            <input type="file" id="image-upload" accept="image/*" style="display: none;">
+                        </label>
                         <button id="send-button">Отправить</button>
                     </div>
                 </div>
@@ -88,6 +94,11 @@
         <div class="footer">
             <p>&copy; 2023 Jopa Messenger</p>
         </div>
+    </div>
+    
+    <!-- Модальное окно для просмотра изображений -->
+    <div class="image-modal" id="image-modal">
+        <img id="modal-image" class="modal-image">
     </div>
     
     <!-- Socket.IO с CDN -->

@@ -11,8 +11,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const userCount = document.getElementById('user-count');
     const connectedServer = document.getElementById('connected-server');
     const connectionStatus = document.getElementById('connection-status');
+    const createRoomButton = document.getElementById('create-room-button');
+    const roomsList = document.getElementById('rooms-list');
     const autoDeleteToggle = document.getElementById('auto-delete-toggle');
     const deleteTimeSelect = document.getElementById('delete-time-select');
+    
+    // Элементы для работы с изображениями
+    const imageUpload = document.getElementById('image-upload');
+    const imagePreviewContainer = document.getElementById('image-preview-container');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImageButton = document.getElementById('remove-image');
+    const imageModal = document.getElementById('image-modal');
+    const modalImage = document.getElementById('modal-image');
+    
+    // Настройки приватных комнат
+    let currentRoom = null;
+    let rooms = new Map(); // Хранилище комнат и их настроек
+    let messageTimers = {}; // Хранилище таймеров для удаления сообщений
+    
+    // Настройки изображений
+    let currentImage = null;
+    const MAX_IMAGE_WIDTH = 1024; // Максимальная ширина изображения
+    const MAX_IMAGE_HEIGHT = 1024; // Максимальная высота изображения
+    const IMAGE_QUALITY = 0.7; // Качество сжатия JPEG (0-1)
+    const MAX_IMAGE_SIZE = 500 * 1024; // Максимальный размер файла в байтах (500KB)
     
     // Настройки автоудаления
     let autoDeleteEnabled = true;
@@ -31,13 +53,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let socket;
     let username = '';
-    let messageTimers = {}; // Хранилище таймеров для удаления сообщений
     
     // Флаг для определения, нужно ли автоматически прокручивать чат
     let shouldScrollToBottom = true;
     
     // Загрузка настроек из localStorage
     function loadSettings() {
+        if (localStorage.getItem('rooms')) {
+            try {
+                rooms = new Map(JSON.parse(localStorage.getItem('rooms')));
+                updateRoomsList();
+            } catch (error) {
+                console.error('Ошибка при загрузке настроек комнат:', error);
+            }
+        }
+        
         if (localStorage.getItem('autoDeleteEnabled') !== null) {
             autoDeleteEnabled = localStorage.getItem('autoDeleteEnabled') === 'true';
             autoDeleteToggle.checked = autoDeleteEnabled;
@@ -51,8 +81,90 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Сохранение настроек в localStorage
     function saveSettings() {
+        localStorage.setItem('rooms', JSON.stringify(Array.from(rooms.entries())));
         localStorage.setItem('autoDeleteEnabled', autoDeleteEnabled);
         localStorage.setItem('messageLifetime', messageLifetime);
+    }
+    
+    // Создание новой приватной комнаты
+    function createPrivateRoom() {
+        const roomName = prompt('Введите название комнаты:');
+        if (!roomName) return;
+        
+        const roomId = Date.now().toString();
+        const roomSettings = {
+            name: roomName,
+            autoDeleteEnabled: true,
+            messageLifetime: 30000,
+            createdBy: username,
+            members: [username]
+        };
+        
+        rooms.set(roomId, roomSettings);
+        saveSettings();
+        updateRoomsList();
+        
+        socket.emit('create_room', { roomId, roomName, creator: username });
+    }
+    
+    // Обновление списка комнат в интерфейсе
+    function updateRoomsList() {
+        roomsList.innerHTML = '';
+        rooms.forEach((settings, roomId) => {
+            const li = document.createElement('li');
+            li.className = 'room-item';
+            if (currentRoom === roomId) li.classList.add('active');
+            
+            li.innerHTML = `
+                <span class="room-name">${settings.name}</span>
+                <div class="room-controls">
+                    <button class="join-room-btn" data-room-id="${roomId}">${currentRoom === roomId ? 'Выйти' : 'Войти'}</button>
+                    ${settings.createdBy === username ? `<button class="delete-room-btn" data-room-id="${roomId}">Удалить</button>` : ''}
+                </div>
+            `;
+            
+            roomsList.appendChild(li);
+        });
+    }
+    
+    // Обработчик создания комнаты
+    createRoomButton.addEventListener('click', createPrivateRoom);
+    
+    // Обработчик событий комнат
+    roomsList.addEventListener('click', (e) => {
+        const roomId = e.target.dataset.roomId;
+        if (!roomId) return;
+        
+        if (e.target.classList.contains('join-room-btn')) {
+            if (currentRoom === roomId) {
+                // Выход из комнаты
+                socket.emit('leave_room', { roomId });
+                currentRoom = null;
+                messagesContainer.innerHTML = '';
+                updateRoomsList();
+            } else {
+                // Вход в комнату
+                socket.emit('join_room', { roomId });
+                currentRoom = roomId;
+                updateRoomsList();
+            }
+        } else if (e.target.classList.contains('delete-room-btn')) {
+            if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
+                socket.emit('delete_room', { roomId });
+                rooms.delete(roomId);
+                saveSettings();
+                updateRoomsList();
+            }
+        }
+    });
+    
+    // Обновление настроек комнаты
+    function updateRoomSettings(roomId, settings) {
+        if (rooms.has(roomId)) {
+            rooms.set(roomId, { ...rooms.get(roomId), ...settings });
+            saveSettings();
+            updateRoomsList();
+        }
     }
     
     // Загрузка настроек звуков
@@ -125,123 +237,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Загружаем настройки при загрузке страницы
-    loadSettings();
-    loadSoundSettings();
-    
-    // Обработчики событий для настроек
-    autoDeleteToggle.addEventListener('change', () => {
-        autoDeleteEnabled = autoDeleteToggle.checked;
-        saveSettings();
-        
-        // Обновляем состояние существующих сообщений
-        updateMessageDeletionState();
-    });
-    
-    deleteTimeSelect.addEventListener('change', () => {
-        messageLifetime = parseInt(deleteTimeSelect.value);
-        saveSettings();
-        
-        // Обновляем таймеры существующих сообщений
-        updateMessageDeletionTimers();
-    });
-    
-    // Обновление состояния автоудаления всех сообщений
-    function updateMessageDeletionState() {
-        const messages = document.querySelectorAll('.message');
-        
-        messages.forEach(message => {
-            const messageId = message.id;
-            const countdownElement = document.getElementById(`countdown-${messageId}`);
-            
-            if (countdownElement) {
-                if (autoDeleteEnabled) {
-                    countdownElement.style.display = 'block';
-                    // Перезапускаем таймер, если он был отключен
-                    if (!messageTimers[messageId]) {
-                        setupMessageDeletion(messageId);
-                    }
-                } else {
-                    countdownElement.style.display = 'none';
-                    // Отменяем существующий таймер
-                    if (messageTimers[messageId]) {
-                        clearTimeout(messageTimers[messageId].deletionTimer);
-                        clearInterval(messageTimers[messageId].countdownInterval);
-                        delete messageTimers[messageId];
-                    }
-                }
-            }
-        });
-    }
-    
-    // Обновление таймеров автоудаления всех сообщений
-    function updateMessageDeletionTimers() {
-        Object.keys(messageTimers).forEach(messageId => {
-            // Отменяем существующий таймер
-            clearTimeout(messageTimers[messageId].deletionTimer);
-            clearInterval(messageTimers[messageId].countdownInterval);
-            
-            // Если автоудаление включено, создаем новый таймер
-            if (autoDeleteEnabled) {
-                setupMessageDeletion(messageId);
-            } else {
-                delete messageTimers[messageId];
-            }
-        });
-    }
-
-    // Функция подключения к серверу
-    function connectToServer() {
-        // В облачном хостинге будем использовать текущее положение
-        const serverUrl = window.location.origin;
-        
-        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
-        console.log('Подключение к серверу:', serverUrl);
-        
-        // Обновляем индикатор статуса
-        updateConnectionStatus('connecting');
-        
-        try {
-            // Настройки Socket.IO клиента
-            socket = io(serverUrl, {
-                transports: ['websocket', 'polling'],
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000
-            });
-            
-            // Обновляем информацию о сервере
-            const serverName = window.location.hostname.split('.')[0];
-            connectedServer.textContent = serverName === 'localhost' ? 'облачному серверу' : serverName;
-            
-            // Обработчики событий Socket.io
-            setupSocketListeners();
-            
-            // Отладочные сообщения
-            socket.on('connect_error', (err) => {
-                console.error('Ошибка подключения Socket.IO:', err.message);
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Ошибка подключения: ${err.message}</span>`;
-            });
-            
-            socket.on('reconnect_attempt', (attemptNumber) => {
-                connectionStatus.innerHTML = 
-                    `<span style="color:orange">Повторное подключение (${attemptNumber})...</span>`;
-            });
-            
-            socket.on('reconnect_failed', () => {
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Не удалось восстановить подключение</span>`;
-            });
-            
-            return true;
-        } catch (error) {
-            console.error('Ошибка при создании Socket.IO клиента:', error);
-            connectionStatus.innerHTML = 
-                `<span style="color:red">Ошибка: ${error.message}</span>`;
-            return false;
-        }
-    }
-
     // Настройка обработчиков событий сокета
     function setupSocketListeners() {
         // Подключение к серверу
@@ -326,34 +321,85 @@ document.addEventListener('DOMContentLoaded', () => {
             addSystemMessageToUI(message);
             scrollToBottom();
         });
+
+        // Обработчики событий комнат
+        socket.on('room_created', ({ roomId, roomName, creator }) => {
+            addSystemMessageToUI(`Создана новая комната: ${roomName}`);
+        });
+        
+        socket.on('room_joined', ({ roomId, roomName }) => {
+            addSystemMessageToUI(`Вы присоединились к комнате: ${roomName}`);
+            messagesContainer.innerHTML = '';
+        });
+        
+        socket.on('room_left', ({ roomId, roomName }) => {
+            addSystemMessageToUI(`Вы покинули комнату: ${roomName}`);
+            messagesContainer.innerHTML = '';
+        });
+        
+        socket.on('room_deleted', ({ roomId, roomName }) => {
+            addSystemMessageToUI(`Комната удалена: ${roomName}`);
+            if (currentRoom === roomId) {
+                currentRoom = null;
+                messagesContainer.innerHTML = '';
+            }
+            rooms.delete(roomId);
+            saveSettings();
+            updateRoomsList();
+        });
+        
+        socket.on('room_message', (message) => {
+            if (message.roomId === currentRoom) {
+                addMessageToUI(message);
+            }
+        });
     }
 
-    // Добавление сообщения в UI
+    // Модифицированная функция добавления сообщения в UI
     function addMessageToUI(message) {
         const messageElement = document.createElement('div');
-        const messageId = `msg-${message.id || Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        messageElement.id = messageId;
+        messageElement.className = 'message';
+        messageElement.id = `message-${message.timestamp}`;
         
-        const isOwnMessage = message.user === username;
+        const formattedMessage = formatMessage(message.text);
         
-        messageElement.classList.add('message', isOwnMessage ? 'own' : 'other');
-        
-        const time = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        let imageHtml = '';
+        if (message.image) {
+            // Проверяем, абсолютный это путь или base64
+            const imgSrc = message.image.startsWith('data:') 
+                ? message.image  // Это base64
+                : message.image; // Это путь к файлу на сервере
+            
+            imageHtml = `
+                <div class="image-container">
+                    <img src="${imgSrc}" class="message-image" alt="Изображение">
+                </div>
+            `;
+        }
         
         messageElement.innerHTML = `
-            <div class="message-user">${message.user}</div>
-            <div class="message-text">${formatMessage(message.text)}</div>
-            <div class="message-time">${time}</div>
-            <div class="message-countdown" id="countdown-${messageId}" ${!autoDeleteEnabled ? 'style="display:none"' : ''}>
-                Исчезнет через ${Math.floor(messageLifetime / 1000)}с
+            <div class="message-header">
+                <span class="username">${escapeHtml(message.username || message.user)}</span>
+                <span class="timestamp">${new Date(message.timestamp).toLocaleTimeString()}</span>
             </div>
+            <div class="message-content">${formattedMessage}</div>
+            ${imageHtml}
+            ${currentRoom ? `<div id="countdown-${message.timestamp}" class="countdown"></div>` : ''}
         `;
         
         messagesContainer.appendChild(messageElement);
         
-        // Запускаем таймер для удаления сообщения, если включено автоудаление
-        if (autoDeleteEnabled) {
-            setupMessageDeletion(messageId);
+        if (currentRoom && rooms.get(currentRoom)?.autoDeleteEnabled) {
+            setupMessageDeletion(message.timestamp);
+        }
+        
+        if (shouldScrollToBottom) {
+            scrollToBottom();
+        }
+        
+        // Воспроизводим звук только для чужих сообщений
+        if ((message.username || message.user) !== username) {
+            playReceiveSound();
         }
     }
     
@@ -532,25 +578,30 @@ document.addEventListener('DOMContentLoaded', () => {
     function sendMessage() {
         const text = messageInput.value.trim();
         
-        if (!text) return;
+        // Если нет ни текста, ни изображения
+        if (!text && !currentImage) return;
         
-        // Проверка соединения перед отправкой
-        if (!socket || !socket.connected) {
-            addSystemMessageToUI("Невозможно отправить сообщение: нет соединения с сервером");
-            return;
+        const message = {
+            text,
+            username,
+            timestamp: Date.now(),
+            roomId: currentRoom,
+            hasImage: !!currentImage,
+            image: currentImage
+        };
+        
+        socket.emit('message', message);
+        messageInput.value = '';
+        
+        // Очищаем изображение после отправки
+        if (currentImage) {
+            currentImage = null;
+            imagePreview.src = '';
+            imagePreviewContainer.style.display = 'none';
+            imageUpload.value = '';
         }
         
-        // Отправляем сообщение с текущими настройками автоудаления
-        socket.emit('send-message', { 
-            text, 
-            autoDelete: autoDeleteEnabled,
-            lifetime: messageLifetime
-        });
-        
-        // Воспроизводим звук отправки
         playSendSound();
-        
-        messageInput.value = '';
     }
 
     // Обработчик прокрутки чата
@@ -580,4 +631,215 @@ document.addEventListener('DOMContentLoaded', () => {
         
         serverInfo.appendChild(soundSettingsButton);
     }
+
+    // Функция подключения к серверу
+    function connectToServer() {
+        // В облачном хостинге будем использовать текущее положение
+        const serverUrl = window.location.origin;
+        
+        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
+        console.log('Подключение к серверу:', serverUrl);
+        
+        // Обновляем индикатор статуса
+        updateConnectionStatus('connecting');
+        
+        try {
+            // Настройки Socket.IO клиента
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000
+            });
+            
+            // Обновляем информацию о сервере
+            const serverName = window.location.hostname.split('.')[0];
+            connectedServer.textContent = serverName === 'localhost' ? 'облачному серверу' : serverName;
+            
+            // Обработчики событий Socket.io
+            setupSocketListeners();
+            
+            // Отладочные сообщения
+            socket.on('connect_error', (err) => {
+                console.error('Ошибка подключения Socket.IO:', err.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка подключения: ${err.message}</span>`;
+            });
+            
+            socket.on('reconnect_attempt', (attemptNumber) => {
+                connectionStatus.innerHTML = 
+                    `<span style="color:orange">Повторное подключение (${attemptNumber})...</span>`;
+            });
+            
+            socket.on('reconnect_failed', () => {
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Не удалось восстановить подключение</span>`;
+            });
+            
+            return true;
+        } catch (error) {
+            console.error('Ошибка при создании Socket.IO клиента:', error);
+            connectionStatus.innerHTML = 
+                `<span style="color:red">Ошибка: ${error.message}</span>`;
+            return false;
+        }
+    }
+
+    // Обработчики событий для настроек
+    autoDeleteToggle.addEventListener('change', () => {
+        autoDeleteEnabled = autoDeleteToggle.checked;
+        saveSettings();
+        
+        // Обновляем состояние существующих сообщений
+        updateMessageDeletionState();
+    });
+    
+    deleteTimeSelect.addEventListener('change', () => {
+        messageLifetime = parseInt(deleteTimeSelect.value);
+        saveSettings();
+        
+        // Обновляем таймеры существующих сообщений
+        updateMessageDeletionTimers();
+    });
+    
+    // Обновление состояния автоудаления всех сообщений
+    function updateMessageDeletionState() {
+        const messages = document.querySelectorAll('.message');
+        
+        messages.forEach(message => {
+            const messageId = message.id;
+            const countdownElement = document.getElementById(`countdown-${messageId}`);
+            
+            if (countdownElement) {
+                if (autoDeleteEnabled) {
+                    countdownElement.style.display = 'block';
+                    // Перезапускаем таймер, если он был отключен
+                    if (!messageTimers[messageId]) {
+                        setupMessageDeletion(messageId);
+                    }
+                } else {
+                    countdownElement.style.display = 'none';
+                    // Отменяем существующий таймер
+                    if (messageTimers[messageId]) {
+                        clearTimeout(messageTimers[messageId].deletionTimer);
+                        clearInterval(messageTimers[messageId].countdownInterval);
+                        delete messageTimers[messageId];
+                    }
+                }
+            }
+        });
+    }
+    
+    // Обновление таймеров автоудаления всех сообщений
+    function updateMessageDeletionTimers() {
+        Object.keys(messageTimers).forEach(messageId => {
+            // Отменяем существующий таймер
+            clearTimeout(messageTimers[messageId].deletionTimer);
+            clearInterval(messageTimers[messageId].countdownInterval);
+            
+            // Если автоудаление включено, создаем новый таймер
+            if (autoDeleteEnabled) {
+                setupMessageDeletion(messageId);
+            } else {
+                delete messageTimers[messageId];
+            }
+        });
+    }
+
+    // Обработка выбора изображения
+    imageUpload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Проверка типа файла
+        if (!file.type.match('image.*')) {
+            alert('Пожалуйста, выберите изображение');
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                // Оптимизируем изображение
+                currentImage = optimizeImage(img, file.type);
+                
+                // Показываем предпросмотр
+                imagePreview.src = currentImage;
+                imagePreviewContainer.style.display = 'block';
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+    
+    // Кнопка удаления изображения
+    removeImageButton.addEventListener('click', () => {
+        currentImage = null;
+        imagePreview.src = '';
+        imagePreviewContainer.style.display = 'none';
+        imageUpload.value = '';
+    });
+    
+    // Оптимизация изображения
+    function optimizeImage(img, fileType) {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Уменьшаем размер, если изображение слишком большое
+        if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
+            const ratio = Math.min(MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height);
+            width *= ratio;
+            height *= ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Определяем формат вывода
+        const outputFormat = fileType === 'image/png' ? 'image/png' : 'image/jpeg';
+        
+        // Получаем base64 с заданным качеством
+        let dataUrl = canvas.toDataURL(outputFormat, IMAGE_QUALITY);
+        
+        // Если размер все еще превышает ограничение, уменьшаем качество
+        // до тех пор, пока не достигнем нужного размера
+        let quality = IMAGE_QUALITY;
+        const BASE64_MARKER = ';base64,';
+        const base64Index = dataUrl.indexOf(BASE64_MARKER) + BASE64_MARKER.length;
+        const base64 = dataUrl.substring(base64Index);
+        
+        let byteSize = Math.ceil(base64.length * 0.75);
+        
+        while (byteSize > MAX_IMAGE_SIZE && quality > 0.1) {
+            quality -= 0.1;
+            dataUrl = canvas.toDataURL(outputFormat, quality);
+            const newBase64 = dataUrl.substring(dataUrl.indexOf(BASE64_MARKER) + BASE64_MARKER.length);
+            byteSize = Math.ceil(newBase64.length * 0.75);
+        }
+        
+        console.log(`Оптимизировано изображение: ${width}x${height}, ${Math.round(byteSize / 1024)}KB, качество: ${quality.toFixed(1)}`);
+        
+        return dataUrl;
+    }
+    
+    // Открытие изображения в модальном окне
+    messagesContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('message-image')) {
+            modalImage.src = e.target.src;
+            imageModal.style.display = 'flex';
+        }
+    });
+    
+    // Закрытие модального окна
+    imageModal.addEventListener('click', () => {
+        imageModal.style.display = 'none';
+    });
+
+    // Загружаем настройки при загрузке страницы
+    loadSettings();
+    loadSoundSettings();
 }); 
