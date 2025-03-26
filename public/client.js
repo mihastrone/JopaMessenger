@@ -1,8 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Инициализация комнат для предотвращения ошибки ReferenceError
-    window.rooms = new Map(); // Должно быть в самом начале
-    let rooms = window.rooms; // Хранилище комнат и их настроек
-    
     // Элементы интерфейса
     const loginScreen = document.getElementById('login-screen');
     const chatScreen = document.getElementById('chat-screen');
@@ -50,6 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentRoom = 'general';
     window.currentRoom = currentRoom;
     
+    let rooms = new Map(); // Хранилище комнат и их настроек
+    window.rooms = rooms;
+    
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
     let cachedMessages = new Map(); // Кэш сообщений для каждой комнаты (включая общий чат)
     
@@ -87,11 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let displayName = ''; // Имя, отображаемое в чате
     window.displayName = displayName;
-    
-    // Глобальные переменные для админ-панели
-    let isAdmin = false;
-    let bannedUsers = new Map(); // Хранит информацию о забаненных пользователях
-    window.isAdmin = false; // Глобальная переменная для отслеживания статуса администратора
     
     // Инициализация вкладок авторизации
     function initAuthTabs() {
@@ -171,20 +165,14 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConnectionStatus('connecting');
         
         try {
-            // Отключаем существующее соединение если есть
-            if (socket && socket.connected) {
-                console.log('Закрываем предыдущее соединение');
-                socket.disconnect();
-            }
-            
-            // Оптимизированные настройки Socket.IO
+            // Оптимизированные настройки Socket.IO для Railway
             socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 reconnectionAttempts: 10,
                 reconnectionDelay: 1000,
                 timeout: 10000,
                 autoConnect: true,
-                forceNew: true, // Важно: создаем новое соединение
+                // Включаем сжатие для Railway
                 compress: true
             });
             
@@ -193,11 +181,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем информацию о сервере
             const serverName = window.location.hostname;
+            // Проверяем, является ли хост Railway-доменом
             const isRailway = serverName.includes('railway.app') || 
-                            serverName.includes('up.railway.app');
+                             serverName.includes('up.railway.app');
                 
             connectedServer.textContent = isRailway ? 'Railway Cloud' : 
-                                        (serverName === 'localhost' ? 'локальный сервер' : serverName);
+                                         (serverName === 'localhost' ? 'локальный сервер' : serverName);
             
             // Обработчики событий Socket.io
             setupSocketListeners();
@@ -231,370 +220,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Настройка обработчиков событий сокета
-    function setupSocketListeners() {
-        console.log("Настройка обработчиков сокетов");
-        if (!socket) {
-            console.error("Ошибка: socket не инициализирован");
+    // Функция для регистрации нового пользователя
+    function registerUser() {
+        const username = document.getElementById('register-username').value.trim();
+        const password = document.getElementById('register-password').value.trim();
+        const displayNameInput = document.getElementById('register-display-name').value.trim();
+        
+        if (!username || !password) {
+            showMessage('Имя пользователя и пароль не могут быть пустыми!', 'error');
             return;
         }
         
-        // Отключаем предыдущие обработчики, чтобы избежать дублирования
-        socket.off('connect');
-        socket.off('disconnect');
-        socket.off('auth_result');
-        socket.off('registration_result');
-        socket.off('message-history');
-        socket.off('new-message');
-        socket.off('user-list');
-        socket.off('system-message');
-        socket.off('room_created');
-        socket.off('room_joined');
-        socket.off('room_left');
-        socket.off('room_deleted');
-        socket.off('room_message');
-        socket.off('user_joined_room');
-        socket.off('user_left_room');
-        socket.off('room_messages');
+        // Устанавливаем отображаемое имя равным имени пользователя, если оно не указано
+        const userDisplayName = displayNameInput || username;
         
-        // Подключение к серверу
-        socket.on('connect', () => {
-            console.log('Подключено к серверу');
-            connectionStatus.innerHTML = 
-                `<span style="color:green">Подключено!</span>`;
-            
-            // Обновляем индикатор статуса
-            updateConnectionStatus('online');
-        });
-        
-        // Авторизация
-        socket.on('auth_result', (result) => {
-            if (result.success) {
-                // Авторизация успешна
-                console.log('Авторизация успешна:', result.message);
-                
-                // Сохраняем данные пользователя
-                isLoggedIn = true;
-                username = result.username;
-                window.username = username;
-                displayName = result.displayName;
-                window.displayName = displayName;
-                
-                // Обновляем глобальную переменную socket
-                window.socket = socket;
-                
-                // Сохраняем учетные данные, если выбрано "Запомнить меня"
-                if (rememberMe.checked) {
-                    saveCredentials(username, loginPassword.value, displayName);
-                }
-                
-                // Переключаемся на экран чата
-                loginScreen.style.display = 'none';
-                chatScreen.style.display = 'flex';
-                
-                // Инициализируем UI, обязательно делаем это только после успешной авторизации
-                initializeUI();
-                
-                // Загружаем настройки
-                loadSettings();
-            } else {
-                // Ошибка авторизации
-                console.error('Ошибка авторизации:', result.message);
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Ошибка авторизации: ${result.message}</span>`;
-            }
-        });
-        
-        // Регистрация
-        socket.on('registration_result', (result) => {
-            if (result.success) {
-                // Регистрация успешна
-                console.log('Регистрация успешна:', result.message);
-                
-                // Сохраняем данные пользователя
-                isLoggedIn = true;
-                username = registerUsername.value.trim();
-                window.username = username;
-                displayName = registerDisplayName.value.trim();
-                window.displayName = displayName;
-                
-                // Обновляем глобальную переменную socket
-                window.socket = socket;
-                
-                // Сохраняем учетные данные, если выбрано "Запомнить меня"
-                if (rememberMe.checked) {
-                    saveCredentials(username, registerPassword.value, displayName);
-                }
-                
-                // Переключаемся на экран чата
-                loginScreen.style.display = 'none';
-                chatScreen.style.display = 'flex';
-                
-                // Инициализируем UI, обязательно делаем это только после успешной регистрации
-                initializeUI();
-                
-                // Загружаем настройки
-                loadSettings();
-            } else {
-                // Ошибка регистрации
-                console.error('Ошибка регистрации:', result.message);
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Ошибка регистрации: ${result.message}</span>`;
-            }
-        });
-        
-        // Отключение от сервера
-        socket.on('disconnect', (reason) => {
-            console.log('Отключено от сервера:', reason);
-            
-            // Обновляем индикатор статуса
-            updateConnectionStatus('offline');
-            
-            if (reason === 'io server disconnect') {
-                // Сервер разорвал соединение
-                connectionStatus.innerHTML = 
-                    `<span style="color:orange">Отключено от сервера. Повторное подключение...</span>`;
-                socket.connect();
-            } else {
-                // Потеря соединения
-                connectionStatus.innerHTML = 
-                    `<span style="color:orange">Соединение потеряно. Повторное подключение...</span>`;
-            }
-        });
-        
-        // Получение истории сообщений
-        socket.on('message-history', (messages) => {
-            console.log('Получена история сообщений:', messages.length);
-            const messagesContainer = document.getElementById('messages-container');
-            if (!messagesContainer) {
-                console.error('Контейнер сообщений не найден при загрузке истории');
-                return;
-            }
-            
-            messagesContainer.innerHTML = '';
-            
-            // Кэшируем сообщения общего чата
-            const messageElements = [];
-            
-            messages.forEach(message => {
-                const element = addMessageToUI(message);
-                if (element) {
-                    messageElements.push(element.cloneNode(true));
-                }
-            });
-            
-            cachedMessages.set('general', messageElements);
-            scrollToBottom();
-        });
-        
-        // Обновление списка пользователей
-        socket.on('user-list', (users) => {
-            updateUserList(users);
-        });
-        
-        // Системные сообщения
-        socket.on('system-message', (message) => {
-            addSystemMessageToUI(message);
-            scrollToBottom();
-        });
-        
-        // Обработчики событий комнат
-        socket.on('room_created', ({ roomId, roomName, creator }) => {
-            console.log('Комната создана:', roomId, roomName, creator);
-            
-            // Добавляем комнату в список только если ее еще нет
-            if (!rooms.has(roomId)) {
-                rooms.set(roomId, { 
-                    name: roomName, 
-                    autoDeleteEnabled: true,
-                    messageLifetime: 30000
-                });
-                
-                // Сохраняем настройки
-                saveSettings();
-                
-                // Обновляем список комнат
-                updateRoomsList();
-            }
-            
-            addSystemMessageToUI(`Создана новая комната: ${roomName}`);
-            
-            // Если создатель текущий пользователь, автоматически входим в созданную комнату
-            if (creator === username) {
-                joinRoom(roomId);
-            }
-        });
-        
-        // Обработка присоединения к комнате
-        socket.on('room_joined', ({ roomId, roomName }) => {
-            console.log('Вы присоединились к комнате:', roomId, roomName);
-            // Сообщение будет добавлено в обработчике нажатия кнопки
-        });
-        
-        // Обработка выхода из комнаты
-        socket.on('room_left', ({ roomId, roomName }) => {
-            console.log('Вы вышли из комнаты:', roomId, roomName);
-            // Сообщение будет добавлено в обработчике нажатия кнопки
-        });
-        
-        // Удаление комнаты
-        socket.on('room_deleted', ({ roomId, roomName }) => {
-            console.log('Комната удалена:', roomId, roomName);
-            addSystemMessageToUI(`Комната удалена: ${roomName}`);
-            
-            if (currentRoom === roomId) {
-                currentRoom = 'general';
-                window.currentRoom = 'general';
-                messagesContainer.innerHTML = '';
-                
-                // Загружаем сообщения общего чата
-                if (cachedMessages.has('general')) {
-                    const generalMessages = cachedMessages.get('general');
-                    generalMessages.forEach(msg => {
-                        messagesContainer.appendChild(msg.cloneNode(true));
-                    });
-                }
-                
-                // Оповещаем сервер, что нужно получить актуальные сообщения общего чата
-                socket.emit('get_messages');
-            }
-            
-            // Удаляем комнату и её кэшированные сообщения
-            rooms.delete(roomId);
-            if (cachedMessages.has(roomId)) {
-                cachedMessages.delete(roomId);
-            }
-            
-            saveSettings();
-            updateRoomsList();
-        });
-
-        // Получение истории сообщений комнаты
-        socket.on('room_messages', (messages) => {
-            console.log('Получена история сообщений комнаты:', messages.length, 'сообщений');
-            messagesContainer.innerHTML = '';
-            
-            // Кэшируем сообщения комнаты
-            const messageElements = [];
-            
-            messages.forEach(message => {
-                const element = addMessageToUI(message);
-                if (element) {
-                    messageElements.push(element.cloneNode(true));
-                }
-            });
-            
-            if (currentRoom) {
-                cachedMessages.set(currentRoom, messageElements);
-            }
-            
-            scrollToBottom();
-        });
-        
-        // Обработка присоединения пользователя к комнате
-        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
-            console.log('Пользователь присоединился к комнате:', username, roomId);
-            if (currentRoom === roomId) {
-                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
-            }
-        });
-        
-        // Обработка выхода пользователя из комнаты
-        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
-            console.log('Пользователь покинул комнату:', username, roomId);
-            if (currentRoom === roomId) {
-                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
-            }
-        });
-        
-        // Получение нового сообщения
-        socket.on('new-message', (message) => {
-            console.log('Получено новое сообщение от сервера:', message);
-            
-            // Проверяем, что сообщение существует и содержит необходимые поля
-            if (!message || typeof message !== 'object') {
-                console.error('Получено неверное сообщение:', message);
-                return;
-            }
-            
-            // Проверяем, находимся ли мы в общем чате
-            if (currentRoom !== 'general') {
-                console.log('Игнорируем сообщение для общего чата, т.к. находимся в комнате:', currentRoom);
-                return;
-            }
-            
-            const messageElement = addMessageToUI(message);
-            console.log('Результат добавления сообщения в UI:', messageElement ? 'успешно' : 'ошибка');
-            
-            // Если это сообщение для общего чата, добавляем его в кэш
-            if (messageElement) {
-                if (!cachedMessages.has('general')) {
-                    cachedMessages.set('general', []);
-                    console.log('Создана новая коллекция кэша для общего чата');
-                }
-                const generalMessages = cachedMessages.get('general');
-                generalMessages.push(messageElement.cloneNode(true));
-                cachedMessages.set('general', generalMessages);
-                console.log('Сообщение добавлено в кэш общего чата, текущий размер:', generalMessages.length);
-            }
-        });
-        
-        // Сообщения в комнате
-        socket.on('room_message', (message) => {
-            console.log('Получено сообщение для комнаты от сервера:', message);
-            
-            // Проверяем, что сообщение существует и содержит необходимые поля
-            if (!message || typeof message !== 'object') {
-                console.error('Получено неверное сообщение для комнаты:', message);
-                return;
-            }
-            
-            // Проверяем, что сообщение предназначено для текущей комнаты
-            if (message.roomId !== currentRoom) {
-                console.log(`Игнорируем сообщение для комнаты ${message.roomId}, т.к. находимся в ${currentRoom}`);
-                return;
-            }
-            
-            const messageElement = addMessageToUI(message);
-            console.log('Результат добавления сообщения комнаты в UI:', messageElement ? 'успешно' : 'ошибка');
-            
-            // Кэшируем сообщение для этой комнаты
-            if (messageElement) {
-                if (!cachedMessages.has(currentRoom)) {
-                    cachedMessages.set(currentRoom, []);
-                    console.log(`Создана новая коллекция кэша для комнаты ${currentRoom}`);
-                }
-                const roomMessages = cachedMessages.get(currentRoom);
-                roomMessages.push(messageElement.cloneNode(true));
-                cachedMessages.set(currentRoom, roomMessages);
-                console.log(`Сообщение добавлено в кэш комнаты ${currentRoom}, текущий размер:`, roomMessages.length);
-            }
-        });
-        
-        // Принудительная отправка тестового сообщения для проверки работы чата
-        setTimeout(() => {
-            if (isLoggedIn && socket.connected) {
-                console.log('Отправка тестового системного сообщения');
-                addSystemMessageToUI('Подключение проверено, чат работает');
-            }
-        }, 5000);
+        // Сериализуем аватар для отправки на сервер
+        socket.emit('register', { username, password, displayName: userDisplayName, avatar: avatarPreview });
     }
     
-    // Регистрация нового пользователя
-    function registerUser() {
-        const username = registerUsername.value.trim();
-        const displayName = registerDisplayName.value.trim();
-        const password = registerPassword.value;
-        const passwordConfirm = registerPasswordConfirm.value;
+    // Обработчики событий авторизации
+    loginButton.addEventListener('click', () => {
+        const username = loginUsername.value.trim();
+        const password = loginPassword.value;
         
-        // Проверка введенных данных
         if (!username) {
             alert('Пожалуйста, введите логин');
-            return;
-        }
-        
-        if (!displayName) {
-            alert('Пожалуйста, введите отображаемое имя');
             return;
         }
         
@@ -603,61 +253,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        if (password !== passwordConfirm) {
-            alert('Пароли не совпадают');
-            return;
-        }
-        
-        // Автоматически определяем URL сервера (для Railway)
-        const serverUrl = window.location.origin;
-        
-        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
-        console.log('Подключение к серверу для регистрации:', serverUrl);
-        
-        try {
-            // Отключаем существующее соединение если есть
-            if (socket && socket.connected) {
-                console.log('Закрываем предыдущее соединение для регистрации');
-                socket.disconnect();
-            }
-            
-            // Оптимизированные настройки Socket.IO для Railway
-            socket = io(serverUrl, {
-                transports: ['websocket', 'polling'],
-                reconnectionAttempts: 10,
-                reconnectionDelay: 1000,
-                timeout: 10000,
-                autoConnect: true,
-                forceNew: true, // Важно: создаем новое соединение
-                compress: true
-            });
-            
-            // Сохраняем в глобальную переменную
-            window.socket = socket;
-            
-            // Обновляем информацию о сервере
-            const serverName = window.location.hostname;
-            // Проверяем, является ли хост Railway-доменом
-            const isRailway = serverName.includes('railway.app') || 
-                            serverName.includes('up.railway.app');
-                            
-            connectedServer.textContent = isRailway ? 'Railway Cloud' : 
-                                        (serverName === 'localhost' ? 'локальный сервер' : serverName);
-            
-            // Обработчики событий Socket.io
-            setupSocketListeners();
-            
-            // Отправляем запрос на регистрацию
-            socket.emit('register_user', { username, displayName, password });
-            
-            return true;
-        } catch (error) {
-            console.error('Ошибка при создании Socket.IO клиента:', error);
-            connectionStatus.innerHTML = 
-                `<span style="color:red">Ошибка: ${error.message}</span>`;
-            return false;
-        }
-    }
+        authenticateUser(username, password);
+    });
+    
+    registerButton.addEventListener('click', registerUser);
     
     // Обработчики нажатия Enter
     loginUsername.addEventListener('keydown', (e) => {
@@ -696,52 +295,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    registerButton.addEventListener('click', registerUser);
-    
-    // Обработчики событий авторизации
-    loginButton.addEventListener('click', () => {
-        const username = loginUsername.value.trim();
-        const password = loginPassword.value;
-        
-        if (!username) {
-            alert('Пожалуйста, введите логин');
-            return;
-        }
-        
-        if (!password) {
-            alert('Пожалуйста, введите пароль');
-            return;
-        }
-        
-        authenticateUser(username, password);
-    });
-    
     // Настройка обработчиков событий сокета
     function setupSocketListeners() {
-        console.log("Настройка обработчиков сокетов");
-        if (!socket) {
-            console.error("Ошибка: socket не инициализирован");
-            return;
-        }
-        
-        // Отключаем предыдущие обработчики, чтобы избежать дублирования
-        socket.off('connect');
-        socket.off('disconnect');
-        socket.off('auth_result');
-        socket.off('registration_result');
-        socket.off('message-history');
-        socket.off('new-message');
-        socket.off('user-list');
-        socket.off('system-message');
-        socket.off('room_created');
-        socket.off('room_joined');
-        socket.off('room_left');
-        socket.off('room_deleted');
-        socket.off('room_message');
-        socket.off('user_joined_room');
-        socket.off('user_left_room');
-        socket.off('room_messages');
-        
         // Подключение к серверу
         socket.on('connect', () => {
             console.log('Подключено к серверу');
@@ -752,41 +307,46 @@ document.addEventListener('DOMContentLoaded', () => {
             updateConnectionStatus('online');
         });
         
-        // Авторизация
+        // Обработчик результата аутентификации
         socket.on('auth_result', (result) => {
+            console.log('Получен результат аутентификации:', result);
+            
             if (result.success) {
-                // Авторизация успешна
-                console.log('Авторизация успешна:', result.message);
-                
                 // Сохраняем данные пользователя
-                isLoggedIn = true;
-                username = result.username;
-                window.username = username;
+                currentUsername = result.username;
                 displayName = result.displayName;
-                window.displayName = displayName;
                 
-                // Обновляем глобальную переменную socket
-                window.socket = socket;
-                
-                // Сохраняем учетные данные, если выбрано "Запомнить меня"
-                if (rememberMe.checked) {
-                    saveCredentials(username, loginPassword.value, displayName);
+                // Если пользователь выбрал "Запомнить меня", сохраняем данные в localStorage
+                if (rememberMe) {
+                    localStorage.setItem('username', currentUsername);
+                    localStorage.setItem('password', loginPassword.value);
+                    localStorage.setItem('displayName', displayName);
                 }
                 
-                // Переключаемся на экран чата
+                // Если получен аватар, сохраняем его
+                if (result.avatar) {
+                    currentAvatar = result.avatar;
+                    localStorage.setItem('user_avatar', currentAvatar);
+                    
+                    // Обновляем аватар в настройках, если элемент существует
+                    const currentUserAvatar = document.getElementById('current-user-avatar');
+                    if (currentUserAvatar) {
+                        currentUserAvatar.src = currentAvatar;
+                    }
+                }
+                
+                // Скрываем экран логина и показываем чат
                 loginScreen.style.display = 'none';
                 chatScreen.style.display = 'flex';
                 
-                // Инициализируем UI, обязательно делаем это только после успешной авторизации
+                // Инициализируем интерфейс
                 initializeUI();
                 
-                // Загружаем настройки
-                loadSettings();
+                // Загружаем настройки темы
+                loadThemeSettings();
             } else {
-                // Ошибка авторизации
-                console.error('Ошибка авторизации:', result.message);
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Ошибка авторизации: ${result.message}</span>`;
+                // Показываем сообщение об ошибке
+                showMessage(result.message || 'Ошибка аутентификации', 'error');
             }
         });
         
@@ -828,6 +388,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
+        // Тест подключения
+        socket.on('connection-test', (data) => {
+            console.log('Тест подключения:', data);
+        });
+
+        // Обработка ошибок подключения
+        socket.on('connect_error', (error) => {
+            console.error('Ошибка подключения:', error);
+        });
+        
         // Отключение от сервера
         socket.on('disconnect', (reason) => {
             console.log('Отключено от сервера:', reason);
@@ -846,16 +416,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     `<span style="color:orange">Соединение потеряно. Повторное подключение...</span>`;
             }
         });
-        
+
         // Получение истории сообщений
         socket.on('message-history', (messages) => {
-            console.log('Получена история сообщений:', messages.length);
-            const messagesContainer = document.getElementById('messages-container');
-            if (!messagesContainer) {
-                console.error('Контейнер сообщений не найден при загрузке истории');
-                return;
-            }
-            
             messagesContainer.innerHTML = '';
             
             // Кэшируем сообщения общего чата
@@ -863,26 +426,47 @@ document.addEventListener('DOMContentLoaded', () => {
             
             messages.forEach(message => {
                 const element = addMessageToUI(message);
-                if (element) {
-                    messageElements.push(element.cloneNode(true));
-                }
+                messageElements.push(element.cloneNode(true));
             });
             
             cachedMessages.set('general', messageElements);
             scrollToBottom();
         });
-        
+
+        // Получение нового сообщения
+        socket.on('new-message', (message) => {
+            console.log('Получено новое сообщение:', message);
+            const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+            
+            const messageElement = addMessageToUI(message);
+            
+            // Если это сообщение для общего чата, добавляем его в кэш
+            if (currentRoom === 'general' && messageElement) {
+                if (!cachedMessages.has('general')) {
+                    cachedMessages.set('general', []);
+                }
+                const generalMessages = cachedMessages.get('general');
+                generalMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set('general', generalMessages);
+            }
+            
+            // Прокручиваем вниз только если пользователь был внизу
+            if (shouldScrollToBottom || message.username === username) {
+                scrollToBottom();
+            }
+        });
+
         // Обновление списка пользователей
         socket.on('user-list', (users) => {
             updateUserList(users);
         });
-        
+
         // Системные сообщения
         socket.on('system-message', (message) => {
             addSystemMessageToUI(message);
             scrollToBottom();
         });
-        
+
         // Обработчики событий комнат
         socket.on('room_created', ({ roomId, roomName, creator }) => {
             console.log('Комната создана:', roomId, roomName, creator);
@@ -910,26 +494,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Обработка присоединения к комнате
         socket.on('room_joined', ({ roomId, roomName }) => {
-            console.log('Вы присоединились к комнате:', roomId, roomName);
             // Сообщение будет добавлено в обработчике нажатия кнопки
         });
         
-        // Обработка выхода из комнаты
         socket.on('room_left', ({ roomId, roomName }) => {
-            console.log('Вы вышли из комнаты:', roomId, roomName);
             // Сообщение будет добавлено в обработчике нажатия кнопки
         });
         
-        // Удаление комнаты
         socket.on('room_deleted', ({ roomId, roomName }) => {
-            console.log('Комната удалена:', roomId, roomName);
             addSystemMessageToUI(`Комната удалена: ${roomName}`);
-            
             if (currentRoom === roomId) {
                 currentRoom = 'general';
-                window.currentRoom = 'general';
                 messagesContainer.innerHTML = '';
                 
                 // Загружаем сообщения общего чата
@@ -953,10 +529,43 @@ document.addEventListener('DOMContentLoaded', () => {
             saveSettings();
             updateRoomsList();
         });
-
+        
+        socket.on('room_message', (message) => {
+            console.log('Получено сообщение для комнаты:', message);
+            if (message.roomId === currentRoom) {
+                const messageElement = addMessageToUI(message);
+                
+                // Кэшируем сообщение для этой комнаты
+                if (messageElement) {
+                    if (!cachedMessages.has(currentRoom)) {
+                        cachedMessages.set(currentRoom, []);
+                    }
+                    const roomMessages = cachedMessages.get(currentRoom);
+                    roomMessages.push(messageElement.cloneNode(true));
+                    cachedMessages.set(currentRoom, roomMessages);
+                }
+                
+                // Прокручиваем вниз
+                scrollToBottom();
+            }
+        });
+        
+        // Обработка присоединения пользователя к комнате
+        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
+            }
+        });
+        
+        // Обработка выхода пользователя из комнаты
+        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
+            }
+        });
+        
         // Получение истории сообщений комнаты
         socket.on('room_messages', (messages) => {
-            console.log('Получена история сообщений комнаты:', messages.length, 'сообщений');
             messagesContainer.innerHTML = '';
             
             // Кэшируем сообщения комнаты
@@ -975,118 +584,16 @@ document.addEventListener('DOMContentLoaded', () => {
             
             scrollToBottom();
         });
-        
-        // Обработка присоединения пользователя к комнате
-        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
-            console.log('Пользователь присоединился к комнате:', username, roomId);
-            if (currentRoom === roomId) {
-                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
-            }
-        });
-        
-        // Обработка выхода пользователя из комнаты
-        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
-            console.log('Пользователь покинул комнату:', username, roomId);
-            if (currentRoom === roomId) {
-                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
-            }
-        });
-        
-        // Получение нового сообщения
-        socket.on('new-message', (message) => {
-            console.log('Получено новое сообщение от сервера:', message);
-            
-            // Проверяем, что сообщение существует и содержит необходимые поля
-            if (!message || typeof message !== 'object') {
-                console.error('Получено неверное сообщение:', message);
-                return;
-            }
-            
-            // Проверяем, находимся ли мы в общем чате
-            if (currentRoom !== 'general') {
-                console.log('Игнорируем сообщение для общего чата, т.к. находимся в комнате:', currentRoom);
-                return;
-            }
-            
-            const messageElement = addMessageToUI(message);
-            console.log('Результат добавления сообщения в UI:', messageElement ? 'успешно' : 'ошибка');
-            
-            // Если это сообщение для общего чата, добавляем его в кэш
-            if (messageElement) {
-                if (!cachedMessages.has('general')) {
-                    cachedMessages.set('general', []);
-                    console.log('Создана новая коллекция кэша для общего чата');
-                }
-                const generalMessages = cachedMessages.get('general');
-                generalMessages.push(messageElement.cloneNode(true));
-                cachedMessages.set('general', generalMessages);
-                console.log('Сообщение добавлено в кэш общего чата, текущий размер:', generalMessages.length);
-            }
-        });
-        
-        // Сообщения в комнате
-        socket.on('room_message', (message) => {
-            console.log('Получено сообщение для комнаты от сервера:', message);
-            
-            // Проверяем, что сообщение существует и содержит необходимые поля
-            if (!message || typeof message !== 'object') {
-                console.error('Получено неверное сообщение для комнаты:', message);
-                return;
-            }
-            
-            // Проверяем, что сообщение предназначено для текущей комнаты
-            if (message.roomId !== currentRoom) {
-                console.log(`Игнорируем сообщение для комнаты ${message.roomId}, т.к. находимся в ${currentRoom}`);
-                return;
-            }
-            
-            const messageElement = addMessageToUI(message);
-            console.log('Результат добавления сообщения комнаты в UI:', messageElement ? 'успешно' : 'ошибка');
-            
-            // Кэшируем сообщение для этой комнаты
-            if (messageElement) {
-                if (!cachedMessages.has(currentRoom)) {
-                    cachedMessages.set(currentRoom, []);
-                    console.log(`Создана новая коллекция кэша для комнаты ${currentRoom}`);
-                }
-                const roomMessages = cachedMessages.get(currentRoom);
-                roomMessages.push(messageElement.cloneNode(true));
-                cachedMessages.set(currentRoom, roomMessages);
-                console.log(`Сообщение добавлено в кэш комнаты ${currentRoom}, текущий размер:`, roomMessages.length);
-            }
-        });
-        
-        // Принудительная отправка тестового сообщения для проверки работы чата
-        setTimeout(() => {
-            if (isLoggedIn && socket.connected) {
-                console.log('Отправка тестового системного сообщения');
-                addSystemMessageToUI('Подключение проверено, чат работает');
-            }
-        }, 5000);
     }
-    
+
     // Модифицированная функция добавления сообщения в UI
     function addMessageToUI(message) {
         console.log('Добавление сообщения в UI:', message);
-        
-        if (!message) {
-            console.error('Получено пустое сообщение');
-            return null;
-        }
-        
-        // Найдем контейнер сообщений
-        const msgContainer = document.getElementById('messages-container');
-        if (!msgContainer) {
-            console.error('Контейнер сообщений не найден');
-            return null;
-        }
-        
-        // Создаем новый элемент сообщения
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
-        messageElement.id = `message-${message.timestamp || Date.now()}`;
+        messageElement.id = `message-${message.timestamp}`;
         
-        const formattedMessage = formatMessage(message.text || '');
+        const formattedMessage = formatMessage(message.text);
         
         let imageHtml = '';
         if (message.image) {
@@ -1107,60 +614,31 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.classList.add(isOwnMessage ? 'own' : 'other');
         
         // Используем displayName если он есть, или username в качестве запасного варианта
-        const senderName = message.displayName || message.username || 'Аноним';
+        const senderName = message.displayName || message.username;
         
         messageElement.innerHTML = `
             <div class="message-header">
                 <span class="username">${escapeHtml(senderName)}</span>
-                <span class="timestamp">&nbsp;•&nbsp;${new Date(message.timestamp || Date.now()).toLocaleTimeString()}</span>
+                <span class="timestamp">${new Date(message.timestamp).toLocaleTimeString()}</span>
             </div>
             <div class="message-content">${formattedMessage}</div>
             ${imageHtml}
-            ${currentRoom !== 'general' ? `<div id="countdown-${message.timestamp || Date.now()}" class="countdown"></div>` : ''}
+            ${currentRoom !== 'general' ? `<div id="countdown-${message.timestamp}" class="countdown"></div>` : ''}
         `;
         
-        // Напрямую добавляем в DOM
-        msgContainer.appendChild(messageElement);
-        console.log('Сообщение добавлено в DOM, текущее количество сообщений:', msgContainer.children.length);
-        
-        // Безопасно проверяем автоудаление в комнатах
-        const roomToCheck = window.rooms || rooms;
+        messagesContainer.appendChild(messageElement);
         
         // Настраиваем автоудаление только для комнат, не для общего чата
-        if (currentRoom !== 'general' && roomToCheck && roomToCheck.get && roomToCheck.get(currentRoom)?.autoDeleteEnabled) {
-            setupMessageDeletion(message.timestamp || Date.now());
+        if (currentRoom !== 'general' && rooms.get(currentRoom)?.autoDeleteEnabled) {
+            setupMessageDeletion(message.timestamp);
         }
         
-        // Прокручиваем чат вниз
-        scrollToBottom();
+        if (shouldScrollToBottom) {
+            scrollToBottom();
+        }
         
         return messageElement;
     }
-    
-    // Обработчики сообщений теперь будут глобально доступны
-    window.addMessageToUI = addMessageToUI;
-    
-    // Усиленная функция прокрутки чата вниз
-    function scrollToBottom() {
-        console.log('Вызвана функция прокрутки чата вниз');
-        const messagesContainer = document.getElementById('messages-container');
-        if (!messagesContainer) {
-            console.error('Элемент messages-container не найден при попытке прокрутки');
-            return;
-        }
-        
-        // Попытка прокрутки сразу
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        
-        // Запасной вариант с задержкой 
-        setTimeout(() => {
-            if (messagesContainer) {
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                console.log('Выполнена прокрутка чата вниз (с задержкой)');
-            }
-        }, 100);
-    }
-    window.scrollToBottom = scrollToBottom;
     
     // Форматирование сообщения (обработка ссылок)
     function formatMessage(text) {
@@ -1259,6 +737,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             userList.appendChild(userElement);
         });
+    }
+
+    // Прокрутка чата вниз
+    function scrollToBottom() {
+        // Задержка для корректной работы скролла после рендеринга сообщения
+        setTimeout(() => {
+            if (messagesContainer) {
+                messagesContainer.scrollTo({
+                    top: messagesContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }, 0);
     }
 
     // Экранирование HTML
@@ -1487,12 +978,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Удаляем предыдущие обработчики, чтобы избежать дублирования
-        const oldRoomsList = roomsListElement.cloneNode(true);
-        roomsListElement.parentNode.replaceChild(oldRoomsList, roomsListElement);
-        
         // Добавляем обработчик для кнопок в списке комнат
-        oldRoomsList.addEventListener('click', function(e) {
+        roomsListElement.addEventListener('click', function(e) {
             if (e.target.classList.contains('room-button')) {
                 const roomId = e.target.dataset.roomid;
                 console.log('Клик по кнопке комнаты:', roomId);
@@ -1508,18 +995,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roomId = e.target.dataset.roomid;
                 console.log('Клик по кнопке удаления комнаты:', roomId);
                 
-                // Используем модальное окно с подтверждением
                 if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
                     console.log('Отправляю запрос на удаление комнаты:', roomId);
                     socket.emit('delete_room', { roomId });
-                    
-                    // Сразу перенаправляем в общий чат, чтобы избежать проблем с интерфейсом
-                    if (currentRoom === roomId) {
-                        currentRoom = 'general';
-                        window.currentRoom = 'general';
-                        messagesContainer.innerHTML = '';
-                        socket.emit('get_messages');
-                    }
                 }
             }
         });
@@ -1636,17 +1114,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Загрузка настроек комнат
     function loadSettings() {
         try {
-            console.log('Загрузка настроек комнат...');
-            
-            // Проверяем, инициализирована ли переменная rooms
-            if (!window.rooms) {
-                window.rooms = new Map();
-            }
-            
-            if (typeof rooms === 'undefined') {
-                rooms = window.rooms;
-            }
-            
             // Загружаем сохраненные комнаты
             const savedRoomsStr = localStorage.getItem('chat_rooms');
             console.log('Загружаю сохраненные комнаты (строка):', savedRoomsStr);
@@ -1680,13 +1147,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем список комнат после загрузки
             updateRoomsList();
-            console.log('Комнаты после загрузки:', Array.from(window.rooms.entries()));
+            console.log('Комнаты после загрузки:', Array.from(rooms.entries()));
         } catch (error) {
             console.error('Ошибка загрузки настроек:', error);
-            
-            // В случае ошибки инициализируем пустую структуру
-            window.rooms = new Map();
-            rooms = window.rooms;
         }
     }
     
@@ -1896,9 +1359,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Вызвана функция отправки сообщения');
         
         // Проверяем, доступен ли сокет
-        if (!window.socket || !window.socket.connected) {
-            console.error('Сокет не инициализирован или не подключен!');
-            alert('Ошибка подключения к серверу. Обновите страницу.');
+        if (!window.socket) {
+            console.error('Сокет не инициализирован!');
+            alert('Ошибка подключения к серверу');
             return;
         }
         
@@ -1978,46 +1441,35 @@ document.addEventListener('DOMContentLoaded', () => {
         shouldScrollToBottom = isAtBottom;
     });
 
-    // Функция инициализации интерфейса - вызывается только один раз
+    // Функция инициализации интерфейса
     function initializeUI() {
-        // Настройка вкладок авторизации
-        initAuthTabs();
+        console.log('Инициализация пользовательского интерфейса');
         
-        // Загрузка сохраненных настроек
-        loadSettings();
+        // Устанавливаем отображаемое имя пользователя
+        userDisplayNameElement.textContent = displayName || currentUsername;
         
-        // Проверка сохраненных учетных данных
-        checkSavedCredentials();
+        // Инициализируем обработчики для загрузки аватаров
+        setupAvatarHandlers();
         
-        // Обработчик нажатия на кнопку админ-панели
-        const adminPanelButton = document.getElementById('admin-panel-button');
-        if (adminPanelButton) {
-            adminPanelButton.addEventListener('click', loginAsAdmin);
+        // Изначально показываем основной чат
+        showGeneralChat();
+        
+        // Инициализируем обработчики только если еще не инициализированы
+        if (!window.uiInitialized) {
+            setupRoomHandlers();
+            setupThemeHandler();
+            setupOtherImageHandlers();
+            setupMessageHandlers();
+            
+            // Отмечаем, что UI уже инициализирован
+            window.uiInitialized = true;
+            console.log('UI инициализирован');
+        } else {
+            console.log('UI уже был инициализирован ранее');
         }
         
-        // Настройка обработчиков сообщений
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-        
-        sendButton.addEventListener('click', sendMessage);
-        
-        // Добавляем прокрутку вниз при изменении размера окна
-        window.addEventListener('resize', scrollToBottom);
-        
-        // Настройка обработчиков изображений
-        setupOtherImageHandlers();
-        
-        // Настройка обработчика темы
-        setupThemeHandler();
-        
-        // Настройка обработчиков приватных комнат
-        setupRoomsHandlers();
-        
-        console.log('UI инициализирован');
+        // Обновляем список комнат в любом случае
+        updateRoomsList();
     }
 
     // Добавляем обработчик отправки по Enter для текстового поля
@@ -2063,7 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Добавляем прямой обработчик в конце файла
+    // Добавляем прямые обработчики в конце файла
     (function() {
         // Ждем полной загрузки документа
         document.addEventListener('DOMContentLoaded', function() {
@@ -2073,71 +1525,68 @@ document.addEventListener('DOMContentLoaded', () => {
             const createRoomBtn = document.getElementById('create-room-button');
             if (createRoomBtn) {
                 console.log('Добавляю прямой обработчик для кнопки создания комнаты');
-                
-                // Удаляем все существующие обработчики
-                const oldBtn = createRoomBtn.cloneNode(true);
-                createRoomBtn.parentNode.replaceChild(oldBtn, createRoomBtn);
-                
-                // Добавляем новый обработчик
-                oldBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
+                createRoomBtn.onclick = function() {
                     console.log('Прямой клик по кнопке создания комнаты');
                     
                     // Проверяем, что пользователь авторизован и сокет доступен
-                    if (!window.socket || !window.socket.connected) {
+                    if (!window.socket) {
                         console.error('Сокет не инициализирован!');
-                        alert('Ошибка подключения к серверу. Обновите страницу.');
+                        alert('Ошибка подключения к серверу');
                         return;
                     }
                     
                     const roomName = prompt('Введите название комнаты:');
                     if (roomName && roomName.trim()) {
                         // Генерируем случайный ID комнаты
-                        const roomId = 'room_' + Date.now();
+                        const roomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
                         console.log('Создание комнаты:', roomId, roomName.trim(), 'от пользователя:', window.username);
                         
-                        try {
-                            // Отправляем запрос на создание комнаты
-                            window.socket.emit('create_room', { 
-                                roomId, 
-                                roomName: roomName.trim(),
-                                creator: window.username
+                        // Отправляем запрос на создание комнаты
+                        window.socket.emit('create_room', { 
+                            roomId, 
+                            roomName: roomName.trim(),
+                            creator: window.username,
+                            autoDeleteEnabled: true,
+                            messageLifetime: 30000
+                        });
+                        
+                        // Обновляем список комнат
+                        if (window.rooms) {
+                            window.rooms.set(roomId, { 
+                                name: roomName.trim(), 
+                                autoDeleteEnabled: true, 
+                                messageLifetime: 30000 
                             });
                             
-                            console.log('Запрос на создание комнаты отправлен');
-                            
-                            // Принудительно добавляем комнату в список, не дожидаясь события от сервера
-                            if (window.rooms) {
-                                window.rooms.set(roomId, { 
-                                    name: roomName.trim(), 
-                                    autoDeleteEnabled: true, 
-                                    messageLifetime: 30000 
-                                });
-                                
-                                // Обновляем список комнат
-                                if (typeof window.updateRoomsList === 'function') {
-                                    window.updateRoomsList();
-                                }
-                                
-                                // Переключаемся в новую комнату
-                                if (typeof window.joinRoom === 'function') {
-                                    window.joinRoom(roomId);
-                                }
+                            // Сохраняем настройки
+                            if (typeof window.saveSettings === 'function') {
+                                window.saveSettings();
+                            } else {
+                                console.error('Функция saveSettings не найдена');
                             }
-                        } catch (err) {
-                            console.error('Ошибка при создании комнаты:', err);
-                            alert('Произошла ошибка при создании комнаты. Попробуйте еще раз.');
+                            
+                            // Обновляем список комнат
+                            if (typeof window.updateRoomsList === 'function') {
+                                window.updateRoomsList();
+                            } else {
+                                console.error('Функция updateRoomsList не найдена');
+                            }
+                            
+                            // Входим в комнату
+                            if (typeof window.joinRoom === 'function') {
+                                window.joinRoom(roomId);
+                            } else {
+                                console.error('Функция joinRoom не найдена');
+                            }
+                        } else {
+                            console.error('window.rooms не найдена');
                         }
                     }
-                });
+                };
+            } else {
+                console.error('Кнопка создания комнаты не найдена по ID');
             }
-        });
-    })();
-    
-    // Добавляем прямой обработчик для кнопки отправки сообщений
-    (function() {
-        // Ждем полной загрузки документа
-        document.addEventListener('DOMContentLoaded', function() {
+            
             // Обработчик для кнопки отправки сообщения
             const sendButton = document.getElementById('send-button');
             const messageInput = document.getElementById('message-input');
@@ -2145,16 +1594,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sendButton && messageInput) {
                 console.log('Добавляю прямой обработчик для кнопки отправки сообщения');
                 
-                // Удаляем все существующие обработчики
-                const oldBtn = sendButton.cloneNode(true);
-                sendButton.parentNode.replaceChild(oldBtn, sendButton);
-                
-                // Новый инпут без обработчиков
-                const oldInput = messageInput.cloneNode(true);
-                messageInput.parentNode.replaceChild(oldInput, messageInput);
-                
-                // Добавляем новый обработчик для кнопки
-                oldBtn.addEventListener('click', function(e) {
+                sendButton.onclick = function(e) {
                     e.preventDefault();
                     console.log('Прямой клик по кнопке отправки сообщения');
                     
@@ -2165,10 +1605,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.error('Функция sendMessage не найдена');
                         
                         // Резервный вариант отправки
-                        const text = oldInput.value.trim();
+                        const text = messageInput.value.trim();
                         if (!text) return;
                         
-                        if (window.socket && window.socket.connected) {
+                        if (window.socket) {
                             const message = {
                                 text: text,
                                 username: window.username,
@@ -2180,478 +1620,222 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             console.log('Отправка сообщения напрямую (резервный вариант):', message);
                             window.socket.emit('message', message);
-                            oldInput.value = '';
+                            messageInput.value = '';
                         } else {
-                            console.error('Сокет не инициализирован или не подключен');
-                            alert('Ошибка подключения к серверу. Обновите страницу.');
+                            console.error('Сокет не инициализирован');
+                            alert('Ошибка подключения к серверу');
                         }
                     }
-                });
+                };
                 
                 // Обработчик для поля ввода (Enter)
-                oldInput.addEventListener('keydown', function(e) {
+                messageInput.onkeydown = function(e) {
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        oldBtn.click();
+                        sendButton.click();
                         return false;
                     }
-                });
+                };
             } else {
                 console.error('Элементы для отправки сообщений не найдены');
             }
         });
     })();
 
-    // Функция для входа в панель администратора
-    function loginAsAdmin() {
-        // Проверяем, авторизован ли пользователь
-        if (!isLoggedIn) {
-            alert('Пожалуйста, войдите в систему, чтобы получить доступ к панели администратора');
+    // Функция для обработки аватара
+    function processAvatar(file, previewElement, updateServer = false) {
+        if (!file || file.type.indexOf('image') === -1) return;
+        
+        // Проверка размера файла
+        if (file.size > 2 * 1024 * 1024) { // 2 МБ максимум
+            alert('Файл слишком большой. Максимальный размер аватара: 2 МБ');
             return;
         }
         
-        // Запрашиваем пароль администратора
-        const adminPassword = prompt('Введите пароль администратора:');
-        if (!adminPassword) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                // Создаем canvas для сжатия изображения
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 200; // Максимальный размер аватара
+                
+                let width = img.width;
+                let height = img.height;
+                
+                // Уменьшаем размер, если необходимо
+                if (width > MAX_SIZE || height > MAX_SIZE) {
+                    const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+                    width = Math.floor(width * ratio);
+                    height = Math.floor(height * ratio);
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Создаем URL из canvas
+                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Обновляем превью
+                previewElement.src = dataURL;
+                
+                // Сохраняем аватар в глобальную переменную
+                avatarPreview = dataURL;
+                
+                if (updateServer) {
+                    // Обновляем текущий аватар
+                    currentAvatar = dataURL;
+                    // Сохраняем в localStorage
+                    localStorage.setItem('user_avatar', dataURL);
+                    
+                    // Если нужно обновить аватар на сервере и есть соединение
+                    if (socket && socket.connected) {
+                        socket.emit('update_avatar', { avatar: dataURL });
+                        console.log('Отправлен запрос на обновление аватара');
+                    }
+                }
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Функция для обработки загрузки аватара при регистрации
+    function setupAvatarHandlers() {
+        const registerAvatarUpload = document.getElementById('register-avatar-upload');
+        const registerAvatarPreview = document.getElementById('register-avatar-preview');
+        const changeAvatarUpload = document.getElementById('change-avatar-upload');
+        const currentUserAvatar = document.getElementById('current-user-avatar');
+        const currentUserName = document.getElementById('current-user-name');
         
-        // Проверяем пароль
-        if (adminPassword === '71814131Tar') {
-            // Отправляем запрос на сервер для получения прав администратора
-            socket.emit('admin_login', { username });
-            
-            // Отмечаем пользователя как администратора
-            isAdmin = true;
-            window.isAdmin = true;
-            
-            // Создаем админ-панель, если её еще нет
-            if (!document.getElementById('admin-panel')) {
-                createAdminPanel();
-            } else {
-                // Показываем существующую панель
-                document.getElementById('admin-panel').style.display = 'block';
-            }
-            
-            alert('Вы успешно вошли в панель администратора!');
-        } else {
-            alert('Неверный пароль администратора');
+        // Устанавливаем отображаемое имя в настройках
+        if (currentUserName && displayName) {
+            currentUserName.textContent = displayName;
+        }
+        
+        // Если есть сохраненный аватар, загружаем его
+        const savedAvatar = localStorage.getItem('user_avatar');
+        if (savedAvatar && currentUserAvatar) {
+            currentUserAvatar.src = savedAvatar;
+            currentAvatar = savedAvatar;
+        }
+        
+        if (registerAvatarUpload && registerAvatarPreview) {
+            registerAvatarUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    processAvatar(file, registerAvatarPreview);
+                }
+            });
+        }
+        
+        if (changeAvatarUpload && currentUserAvatar) {
+            changeAvatarUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    processAvatar(file, currentUserAvatar, true);
+                }
+            });
         }
     }
 
-    // Делаем функцию доступной глобально
-    window.loginAsAdmin = loginAsAdmin;
-    
-    // Создание панели администратора
-    function createAdminPanel() {
-        // Создаем элемент панели
-        const adminPanel = document.createElement('div');
-        adminPanel.id = 'admin-panel';
-        adminPanel.className = 'admin-panel';
+    // Функция для отображения сообщения
+    function displayMessage(message) {
+        console.log('Отображение сообщения:', message);
         
-        // Добавляем заголовок и кнопку закрытия
-        adminPanel.innerHTML = `
-            <div class="admin-header">
-                <h2><i class="fas fa-shield-alt"></i> Панель администратора</h2>
-                <button id="close-admin-panel" class="close-btn">&times;</button>
-            </div>
-            <div class="admin-content">
-                <div class="admin-section">
-                    <h3>Управление пользователями</h3>
-                    <div class="admin-input-group">
-                        <input type="text" id="ban-username" placeholder="Имя пользователя">
-                        <select id="ban-duration">
-                            <option value="-1">Навсегда</option>
-                            <option value="${60 * 1000}">1 минута</option>
-                            <option value="${10 * 60 * 1000}">10 минут</option>
-                            <option value="${60 * 60 * 1000}">1 час</option>
-                            <option value="${24 * 60 * 60 * 1000}">1 день</option>
-                            <option value="${7 * 24 * 60 * 60 * 1000}">1 неделя</option>
-                        </select>
-                        <button id="ban-user-button" class="admin-btn ban-btn">
-                            <i class="fas fa-ban"></i> Забанить
-                        </button>
-                        <button id="unban-user-button" class="admin-btn unban-btn">
-                            <i class="fas fa-user-check"></i> Разбанить
-                        </button>
-                    </div>
-                    <div class="banned-users-list" id="banned-users-list">
-                        <ul></ul>
-                    </div>
-                </div>
-                
-                <div class="admin-section">
-                    <h3>Просмотр приватных комнат</h3>
-                    <div class="admin-input-group">
-                        <select id="private-room-select">
-                            <option value="">Выберите комнату</option>
-                        </select>
-                        <button id="view-room-button" class="admin-btn view-btn">
-                            <i class="fas fa-eye"></i> Просмотреть
-                        </button>
-                    </div>
-                    <div class="admin-room-messages" id="admin-room-messages"></div>
-                </div>
-            </div>
-        `;
-        
-        // Добавляем стили для админ-панели
-        const style = document.createElement('style');
-        style.textContent = `
-            .admin-panel {
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                width: 80%;
-                top: 10px;
-                right: 10px;
-                width: 350px;
-                background-color: #fff;
-                border: 1px solid #ccc;
-                border-radius: 5px;
-                box-shadow: 0 0 10px rgba(0,0,0,0.2);
-                z-index: 1000;
-                max-height: 80vh;
-                overflow-y: auto;
-            }
-            .admin-header {
-                padding: 10px;
-                background-color: #f0f0f0;
-                border-bottom: 1px solid #ccc;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .admin-content {
-                padding: 10px;
-            }
-            .admin-section {
-                margin-bottom: 20px;
-            }
-            .admin-input-group {
-                display: flex;
-                margin-bottom: 10px;
-                flex-wrap: wrap;
-            }
-            .admin-input-group input,
-            .admin-input-group select {
-                padding: 5px;
-                margin-right: 5px;
-                margin-bottom: 5px;
-                flex-grow: 1;
-            }
-            .admin-input-group button {
-                padding: 5px 10px;
-                margin-right: 5px;
-                margin-bottom: 5px;
-            }
-            .admin-room-messages {
-                max-height: 300px;
-                overflow-y: auto;
-                border: 1px solid #ccc;
-                padding: 10px;
-                margin-top: 10px;
-            }
-            .admin-toggle-button {
-                padding: 5px 10px;
-                cursor: pointer;
-            }
-            .banned-users-list {
-                margin-top: 10px;
-                border: 1px solid #ccc;
-                padding: 10px;
-                max-height: 150px;
-                overflow-y: auto;
-            }
-            .banned-users-list ul {
-                padding-left: 20px;
-                margin: 0;
-            }
-            .banned-users-list li {
-                margin-bottom: 5px;
-            }
-        `;
-        document.head.appendChild(style);
-        
-        // Добавляем панель в документ
-        document.body.appendChild(adminPanel);
-        
-        // Добавляем обработчики событий для кнопок
-        document.getElementById('ban-user-button').addEventListener('click', banUser);
-        document.getElementById('unban-user-button').addEventListener('click', unbanUser);
-        document.getElementById('view-room-button').addEventListener('click', viewPrivateRoom);
-        
-        // Запрашиваем список забаненных пользователей
-        socket.emit('get_banned_users');
-        
-        // Запрашиваем список приватных комнат
-        socket.emit('get_private_rooms');
-        
-        console.log('Панель администратора создана');
-    }
-    
-    // Функция для бана пользователя
-    function banUser() {
-        const username = document.getElementById('ban-username').value.trim();
-        const duration = parseInt(document.getElementById('ban-duration').value);
-        
-        if (!username) {
-            alert('Введите имя пользователя');
+        // Проверяем, системное ли это сообщение
+        if (message.system) {
+            const systemMsg = document.createElement('div');
+            systemMsg.className = 'system-message';
+            systemMsg.textContent = message.text;
+            messagesContainer.appendChild(systemMsg);
             return;
         }
         
-        // Отправляем запрос на сервер
-        socket.emit('ban_user', { username, duration });
+        // Создаем элементы для отображения сообщения
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message';
         
-        // Обновляем список забаненных пользователей
-        updateBannedUsersList();
-    }
-    
-    // Функция для разбана пользователя
-    function unbanUser() {
-        const username = document.getElementById('ban-username').value.trim();
-        
-        if (!username) {
-            alert('Введите имя пользователя');
-            return;
+        // Добавляем класс для собственных сообщений
+        if (message.username === currentUsername) {
+            messageElement.classList.add('own');
         }
         
-        // Отправляем запрос на сервер
-        socket.emit('unban_user', { username });
+        // Создаем контейнер для аватара
+        const avatarElement = document.createElement('div');
+        avatarElement.className = 'message-avatar';
         
-        // Обновляем список забаненных пользователей
-        updateBannedUsersList();
-    }
-    
-    // Функция для просмотра приватной комнаты
-    function viewPrivateRoom() {
-        const roomId = document.getElementById('private-room-select').value;
+        // Создаем изображение аватара
+        const avatarImg = document.createElement('img');
+        avatarImg.src = message.avatar || '/uploads/default-avatar.png';
+        avatarImg.alt = message.displayName || message.username;
+        avatarElement.appendChild(avatarImg);
         
-        if (!roomId) {
-            alert('Выберите комнату');
-            return;
-        }
+        // Создаем контейнер для содержимого сообщения
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'message-content-wrapper';
         
-        // Отправляем запрос на получение сообщений комнаты
-        socket.emit('get_room_messages_admin', { roomId });
-    }
-    
-    // Функция для обновления списка забаненных пользователей
-    function updateBannedUsersList() {
-        // Запрашиваем актуальный список с сервера
-        socket.emit('get_banned_users');
-    }
-    
-    // Обработчик для отображения списка забаненных пользователей
-    function displayBannedUsers(users) {
-        const bannedUsersList = document.getElementById('banned-users-list');
-        if (!bannedUsersList) return;
+        // Создаем пузырь сообщения
+        const messageBubble = document.createElement('div');
+        messageBubble.className = 'message-bubble';
         
-        bannedUsersList.innerHTML = '';
+        // Добавляем метаданные сообщения (имя пользователя и время)
+        const metaElement = document.createElement('div');
+        metaElement.className = 'message-meta';
         
-        if (!users || users.length === 0) {
-            bannedUsersList.innerHTML = '<li>Нет забаненных пользователей</li>';
-            return;
-        }
+        // Имя пользователя
+        const usernameElement = document.createElement('span');
+        usernameElement.className = 'username';
+        usernameElement.textContent = message.displayName || message.username;
+        metaElement.appendChild(usernameElement);
         
-        users.forEach(user => {
-            const li = document.createElement('li');
-            const banDuration = user.banDuration === -1 ? 
-                'навсегда' : 
-                formatDuration(user.banDuration);
-            
-            const banExpiry = user.banExpiry ? 
-                ` (до ${new Date(user.banExpiry).toLocaleString()})` : 
-                '';
-            
-            li.textContent = `${user.username} - ${banDuration}${banExpiry}`;
-            bannedUsersList.appendChild(li);
-        });
-    }
-    
-    // Функция для отображения сообщений приватной комнаты
-    function displayPrivateRoomMessages(messages, roomName) {
-        const messagesContainer = document.getElementById('admin-room-messages');
-        if (!messagesContainer) return;
+        // Временная метка
+        const timestampElement = document.createElement('span');
+        timestampElement.className = 'timestamp';
         
-        messagesContainer.innerHTML = `<h4>Сообщения комнаты: ${roomName}</h4>`;
+        // Форматируем время
+        const messageTime = new Date(message.timestamp);
+        const hours = messageTime.getHours().toString().padStart(2, '0');
+        const minutes = messageTime.getMinutes().toString().padStart(2, '0');
+        timestampElement.textContent = `${hours}:${minutes}`;
         
-        if (!messages || messages.length === 0) {
-            messagesContainer.innerHTML += '<p>В этой комнате нет сообщений</p>';
-            return;
-        }
+        metaElement.appendChild(timestampElement);
+        messageBubble.appendChild(metaElement);
         
-        messages.forEach(message => {
-            const messageElement = document.createElement('div');
-            messageElement.className = 'admin-message';
-            
-            // Форматируем дату и время
-            const timestamp = new Date(message.timestamp).toLocaleString();
-            
-            messageElement.innerHTML = `
-                <div class="admin-message-header">
-                    <span class="admin-message-username">${message.displayName || message.username}</span>
-                    <span class="admin-message-timestamp">&nbsp;•&nbsp;${timestamp}</span>
-                </div>
-                <div class="admin-message-content">${formatMessage(message.text || '')}</div>
-                ${message.image ? `<div class="admin-message-image"><img src="${message.image}" alt="Изображение"></div>` : ''}
-            `;
-            
-            messagesContainer.appendChild(messageElement);
-        });
-    }
-    
-    // Функция для форматирования продолжительности бана
-    function formatDuration(ms) {
-        if (ms === -1) return 'навсегда';
+        // Добавляем текст сообщения
+        const textElement = document.createElement('div');
+        textElement.className = 'message-text';
+        textElement.textContent = message.text;
+        messageBubble.appendChild(textElement);
         
-        const seconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(seconds / 60);
-        const hours = Math.floor(minutes / 60);
-        const days = Math.floor(hours / 24);
-        
-        if (days > 0) return `${days} д.`;
-        if (hours > 0) return `${hours} ч.`;
-        if (minutes > 0) return `${minutes} мин.`;
-        return `${seconds} сек.`;
-    }
-    
-    // Обновляем обработчики сокетов для админских функций
-    function setupAdminSocketListeners() {
-        // Получение списка забаненных пользователей
-        socket.on('banned_users_list', (users) => {
-            bannedUsers = new Map(users.map(user => [user.username, user]));
-            displayBannedUsers(users);
-        });
-        
-        // Получение списка приватных комнат
-        socket.on('private_rooms_list', (roomsList) => {
-            const roomSelect = document.getElementById('private-room-select');
-            if (!roomSelect) return;
-            
-            // Сохраняем текущий выбор
-            const currentSelection = roomSelect.value;
-            
-            // Очищаем список
-            roomSelect.innerHTML = '<option value="">Выберите комнату</option>';
-            
-            // Добавляем комнаты в список
-            roomsList.forEach(room => {
-                const option = document.createElement('option');
-                option.value = room.id;
-                option.textContent = `${room.name} (Создатель: ${room.creator})`;
-                roomSelect.appendChild(option);
+        // Если есть изображение, отображаем его
+        if (message.image) {
+            const imageElement = document.createElement('div');
+            imageElement.className = 'message-image';
+            const img = document.createElement('img');
+            img.src = message.image;
+            img.alt = 'Изображение';
+            img.addEventListener('click', () => {
+                // Открываем изображение в полном размере при клике
+                window.open(message.image, '_blank');
             });
-            
-            // Восстанавливаем выбор, если возможно
-            if (currentSelection) {
-                roomSelect.value = currentSelection;
-            }
-        });
-        
-        // Получение сообщений приватной комнаты
-        socket.on('room_messages_admin', ({ messages, roomName }) => {
-            displayPrivateRoomMessages(messages, roomName);
-        });
-        
-        // Уведомление о бане пользователя
-        socket.on('user_banned', (data) => {
-            console.log(`Пользователь ${data.username} забанен`);
-            // Обновляем список забаненных пользователей
-            updateBannedUsersList();
-        });
-        
-        // Уведомление о разбане пользователя
-        socket.on('user_unbanned', (data) => {
-            console.log(`Пользователь ${data.username} разбанен`);
-            // Обновляем список забаненных пользователей
-            updateBannedUsersList();
-        });
-        
-        // Проверка на бан при каждом подключении
-        socket.on('check_ban', (data) => {
-            if (data.banned) {
-                const banInfo = data.banInfo || {};
-                const banDuration = banInfo.banDuration === -1 ? 
-                    'навсегда' : 
-                    formatDuration(banInfo.banDuration);
-                
-                const banExpiry = banInfo.banExpiry ? 
-                    ` до ${new Date(banInfo.banExpiry).toLocaleString()}` : 
-                    '';
-                
-                alert(`Вы забанены: ${banDuration}${banExpiry}`);
-                // Отключаем пользователя
-                if (socket) socket.disconnect();
-                // Перенаправляем на страницу логина
-                loginScreen.style.display = 'flex';
-                chatScreen.style.display = 'none';
-            }
-        });
-    }
-    
-    // Добавляем кнопку для входа в админ-панель в меню настроек
-    function addAdminLoginButton() {
-        const settingsContainer = document.querySelector('.settings-container');
-        if (!settingsContainer) return;
-        
-        // Создаем отдельную секцию для админа
-        const adminSection = document.createElement('div');
-        adminSection.className = 'settings-section admin-section';
-        adminSection.innerHTML = `
-            <h3>Администрирование</h3>
-            <button id="admin-login-button" class="admin-login-button">
-                <i class="fas fa-cog"></i> Войти как администратор
-            </button>
-        `;
-        
-        // Добавляем секцию в контейнер настроек
-        settingsContainer.appendChild(adminSection);
-        
-        // Добавляем обработчик для кнопки
-        document.getElementById('admin-login-button').addEventListener('click', loginAsAdmin);
-        
-        // Добавляем иконку шестеренки в навигационную панель
-        const navContainer = document.querySelector('.nav-container') || document.querySelector('header');
-        if (navContainer) {
-            const adminIcon = document.createElement('div');
-            adminIcon.className = 'admin-icon';
-            adminIcon.innerHTML = `<i class="fas fa-cog" title="Админ-панель"></i>`;
-            adminIcon.addEventListener('click', loginAsAdmin);
-            navContainer.appendChild(adminIcon);
-            
-            // Добавляем стиль для иконки
-            const style = document.createElement('style');
-            style.textContent = `
-                .admin-icon {
-                    cursor: pointer;
-                    margin-left: 15px;
-                    font-size: 1.2em;
-                    color: #555;
-                    transition: color 0.3s;
-                }
-                .admin-icon:hover {
-                    color: #007bff;
-                }
-                .admin-login-button i {
-                    margin-right: 5px;
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }
-    
-    // Модифицируем функцию initializeUI для добавления кнопки админа
-    const originalInitializeUI = window.initializeUI || initializeUI;
-    window.initializeUI = function() {
-        // Вызываем оригинальную функцию
-        if (typeof originalInitializeUI === 'function') {
-            originalInitializeUI();
+            imageElement.appendChild(img);
+            messageBubble.appendChild(imageElement);
         }
         
-        // Добавляем кнопку админа и настраиваем обработчики
-        addAdminLoginButton();
-        setupAdminSocketListeners();
+        // Собираем сообщение
+        contentWrapper.appendChild(messageBubble);
+        messageElement.appendChild(avatarElement);
+        messageElement.appendChild(contentWrapper);
         
-        console.log('UI инициализирован с поддержкой админских функций');
-    };
+        // Добавляем сообщение в контейнер
+        messagesContainer.appendChild(messageElement);
+        
+        // Прокручиваем к последнему сообщению
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
 }); 
