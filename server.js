@@ -81,6 +81,16 @@ let userAvatars = {};
 // Инициализация карты комнат
 let rooms = new Map();
 
+// Создаем экземпляр менеджера пользователей и инициализируем его
+const userManager = new UserManager({
+  userDatabase: userDatabase,
+  bannedUsers: bannedUsers,
+  rooms: rooms,
+  admins: admins,
+  userAvatars: userAvatars,
+  Room: Room // Передаем класс Room для создания комнат
+}).init();
+
 // Загружаем забаненных пользователей при запуске
 if (fs.existsSync(BANNED_USERS_FILE)) {
     try {
@@ -161,83 +171,9 @@ try {
   // rooms уже определена как new Map() выше
 }
 
-// Функция сохранения пользователей в файл с дополнительной обработкой ошибок для Railway
-function saveUsers() {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(userDatabase), 'utf8');
-    console.log('Данные пользователей сохранены');
-  } catch (error) {
-    console.error(`Ошибка при сохранении пользователей: ${error.message}`);
-    // В случае ошибки записи на Railway, можно добавить механизм резервного копирования
-  }
-}
-
-// Функция сохранения забаненных пользователей в файл
-function saveBannedUsers() {
-  try {
-    // Преобразуем Map в массив пар [ключ, значение] для сохранения
-    const bannedArray = Array.from(bannedUsers.entries());
-    fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify(bannedArray), 'utf8');
-    console.log('Данные забаненных пользователей сохранены');
-  } catch (error) {
-    console.error(`Ошибка при сохранении забаненных пользователей: ${error.message}`);
-  }
-}
-
-// Функция сохранения администраторов в файл
-function saveAdmins() {
-  try {
-    // Преобразуем Set в массив для сохранения
-    const adminsArray = Array.from(admins);
-    fs.writeFileSync(ADMINS_FILE, JSON.stringify(adminsArray), 'utf8');
-    console.log('Данные администраторов сохранены');
-  } catch (error) {
-    console.error(`Ошибка при сохранении администраторов: ${error.message}`);
-  }
-}
-
-// Функция сохранения комнат в файл
-function saveRooms() {
-  try {
-    // Преобразуем Map в массив объектов для сохранения
-    const roomsArray = Array.from(rooms.values()).map(room => {
-      // Возвращаем сериализуемый объект комнаты
-      return {
-        id: room.id,
-        name: room.name,
-        creator: room.creator,
-        members: Array.from(room.members),
-        autoDeleteEnabled: room.autoDeleteEnabled,
-        messageLifetime: room.messageLifetime,
-        messages: room.messages // Сохраняем историю сообщений комнаты
-      };
-    });
-    
-    fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsArray), 'utf8');
-    console.log('Данные комнат сохранены');
-  } catch (error) {
-    console.error(`Ошибка при сохранении комнат: ${error.message}`);
-  }
-}
-
-// Функция для сохранения аватаров пользователей
-function saveUserAvatars() {
-    try {
-        fs.writeFileSync(USER_AVATARS_FILE, JSON.stringify(userAvatars, null, 2));
-        console.log('Аватары пользователей сохранены в:', USER_AVATARS_FILE);
-    } catch (error) {
-        console.error('Ошибка при сохранении аватаров пользователей:', error);
-    }
-}
-
-// Функция для сохранения всех данных
+// Обновляем определение функции saveAllData для использования userManager
 function saveAllData() {
-    saveUsers();
-    saveBannedUsers();
-    saveAdmins();
-    saveRooms();
-    saveUserAvatars();
-    console.log('Все данные успешно сохранены');
+  userManager.saveAllData();
 }
 
 // Функция для хеширования пароля с солью
@@ -279,7 +215,7 @@ function registerUser(username, displayName, password) {
   };
   
   // Сохраняем обновленный список пользователей
-  saveUsers();
+  saveAllData();
   
   return { success: true, message: 'Регистрация успешна' };
 }
@@ -315,7 +251,7 @@ function authenticateUser(username, password) {
     delete user.password; // Удаляем старое поле
     
     // Сохраняем обновленные данные
-    saveUsers();
+    saveAllData();
   } 
   else if (user.salt && user.hash) {
     // Новый формат - с солью и более сложным хешированием
@@ -534,7 +470,7 @@ function banUser(username, duration) {
   }
   
   // Сохраняем изменения в файл
-  saveBannedUsers();
+  saveAllData();
   
   console.log(`Пользователь ${username} забанен на ${duration === -1 ? 'навсегда' : `${duration}мс`}`);
   return true;
@@ -550,7 +486,7 @@ function unbanUser(username) {
   bannedUsers.delete(username);
   
   // Сохраняем изменения в файл
-  saveBannedUsers();
+  saveAllData();
   
   console.log(`Пользователь ${username} разбанен`);
   return true;
@@ -679,7 +615,7 @@ io.on('connection', (socket) => {
     }
     
     // Сохраняем учетные данные в файл
-    saveUsers();
+    saveAllData();
     
     // Отправляем успешный ответ
     socket.emit('register_response', { 
@@ -839,7 +775,7 @@ io.on('connection', (socket) => {
     admins.add(username);
     
     // Сохраняем изменения в файл
-    saveAdmins();
+    saveAllData();
     
     console.log(`Пользователь ${username} авторизован как администратор`);
     
@@ -978,7 +914,7 @@ io.on('connection', (socket) => {
     updateAdminsWithRoomsList();
     
     // Сохраняем комнаты в файл
-    saveRooms();
+    saveAllData();
     
     console.log(`Создана новая комната: ${roomName} (ID: ${roomId})`);
   });
@@ -1074,7 +1010,7 @@ io.on('connection', (socket) => {
     rooms.delete(roomId);
     
     // Сохраняем изменения в файл
-    saveRooms();
+    saveAllData();
     
     console.log(`Комната ${room.name} удалена пользователем ${users[socket.id]}`);
   });
@@ -1213,7 +1149,7 @@ io.on('connection', (socket) => {
         userAvatars[username] = '/uploads/default-avatar.png';
         
         // Сохраняем изменения
-        saveUserAvatars();
+        saveAllData();
         
         // Отправляем успешный ответ
         socket.emit('avatar_update_response', { 
@@ -1310,7 +1246,7 @@ io.on('connection', (socket) => {
             userAvatars[username] = avatarUrl;
             
             // Сохраняем обновленные аватары
-            saveUserAvatars();
+            saveAllData();
             
             // Отправляем успешный ответ
             socket.emit('avatar_update_response', { 
@@ -1322,14 +1258,6 @@ io.on('connection', (socket) => {
     });
   });
 });
-
-// Создаем экземпляр менеджера пользователей
-const userManager = new UserManager();
-
-// Обновляем определение функции saveAllData для использования userManager
-function saveAllData() {
-  userManager.saveAllData();
-}
 
 // Функция очистки старых аватаров
 function cleanupOldAvatars() {
