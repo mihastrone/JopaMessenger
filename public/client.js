@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Инициализация комнат для предотвращения ошибки ReferenceError
+    window.rooms = new Map(); // Должно быть в самом начале
+    let rooms = window.rooms; // Хранилище комнат и их настроек
+    
     // Элементы интерфейса
     const loginScreen = document.getElementById('login-screen');
     const chatScreen = document.getElementById('chat-screen');
@@ -45,9 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Настройки приватных комнат
     let currentRoom = 'general';
     window.currentRoom = currentRoom;
-    
-    let rooms = new Map(); // Хранилище комнат и их настроек
-    window.rooms = rooms;
     
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
     let cachedMessages = new Map(); // Кэш сообщений для каждой комнаты (включая общий чат)
@@ -1122,8 +1123,11 @@ document.addEventListener('DOMContentLoaded', () => {
         msgContainer.appendChild(messageElement);
         console.log('Сообщение добавлено в DOM, текущее количество сообщений:', msgContainer.children.length);
         
+        // Безопасно проверяем автоудаление в комнатах
+        const roomToCheck = window.rooms || rooms;
+        
         // Настраиваем автоудаление только для комнат, не для общего чата
-        if (currentRoom !== 'general' && rooms.get(currentRoom)?.autoDeleteEnabled) {
+        if (currentRoom !== 'general' && roomToCheck && roomToCheck.get && roomToCheck.get(currentRoom)?.autoDeleteEnabled) {
             setupMessageDeletion(message.timestamp || Date.now());
         }
         
@@ -1632,6 +1636,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Загрузка настроек комнат
     function loadSettings() {
         try {
+            console.log('Загрузка настроек комнат...');
+            
+            // Проверяем, инициализирована ли переменная rooms
+            if (!window.rooms) {
+                window.rooms = new Map();
+            }
+            
+            if (typeof rooms === 'undefined') {
+                rooms = window.rooms;
+            }
+            
             // Загружаем сохраненные комнаты
             const savedRoomsStr = localStorage.getItem('chat_rooms');
             console.log('Загружаю сохраненные комнаты (строка):', savedRoomsStr);
@@ -1665,9 +1680,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем список комнат после загрузки
             updateRoomsList();
-            console.log('Комнаты после загрузки:', Array.from(rooms.entries()));
+            console.log('Комнаты после загрузки:', Array.from(window.rooms.entries()));
         } catch (error) {
             console.error('Ошибка загрузки настроек:', error);
+            
+            // В случае ошибки инициализируем пустую структуру
+            window.rooms = new Map();
+            rooms = window.rooms;
         }
     }
     
