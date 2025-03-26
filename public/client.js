@@ -44,7 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Настройки приватных комнат
     let currentRoom = 'general';
+    window.currentRoom = currentRoom;
+    
     let rooms = new Map(); // Хранилище комнат и их настроек
+    window.rooms = rooms;
+    
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
     let cachedMessages = new Map(); // Кэш сообщений для каждой комнаты (включая общий чат)
     
@@ -69,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     let socket;
+    window.socket = socket;
     
     // Флаг для определения, нужно ли автоматически прокручивать чат
     let shouldScrollToBottom = true;
@@ -76,7 +81,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Авторизационные данные
     let isLoggedIn = false;
     let username = ''; // Логин для авторизации
+    window.username = username;
+    
     let displayName = ''; // Имя, отображаемое в чате
+    window.displayName = displayName;
     
     // Инициализация вкладок авторизации
     function initAuthTabs() {
@@ -122,6 +130,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (savedDisplayName) {
                 username = savedUsername;
                 displayName = savedDisplayName;
+                window.username = username;
+                window.displayName = displayName;
                 authenticateUser(username, savedPassword);
             }
         }
@@ -336,7 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Сохраняем данные пользователя
                 isLoggedIn = true;
                 username = result.username;
+                window.username = username;
                 displayName = result.displayName;
+                window.displayName = displayName;
                 
                 // Сохраняем учетные данные, если выбрано "Запомнить меня"
                 if (rememberMe.checked) {
@@ -369,7 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Сохраняем данные пользователя
                 isLoggedIn = true;
                 username = registerUsername.value.trim();
+                window.username = username;
                 displayName = registerDisplayName.value.trim();
+                window.displayName = displayName;
                 
                 // Сохраняем учетные данные, если выбрано "Запомнить меня"
                 if (rememberMe.checked) {
@@ -828,21 +842,22 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Настройка обработчиков комнат
     function setupRoomHandlers() {
-        // Сначала удаляем существующие обработчики, чтобы избежать дублирования
-        if (createRoomButton) {
-            // Клонируем элемент для удаления всех обработчиков
-            const oldButton = createRoomButton;
-            const newButton = oldButton.cloneNode(true);
-            oldButton.parentNode.replaceChild(newButton, oldButton);
-            createRoomButton = newButton;
+        console.log('Настройка обработчиков комнат, createRoomButton:', createRoomButton ? 'найден' : 'не найден');
+        
+        // Сначала проверяем существование кнопки создания комнаты
+        const createRoomBtn = document.getElementById('create-room-button');
+        if (createRoomBtn) {
+            console.log('Найдена кнопка создания комнаты по ID');
             
-            // Добавляем обработчик создания комнаты
-            createRoomButton.addEventListener('click', () => {
+            // Напрямую добавляем обработчик без клонирования
+            createRoomBtn.onclick = function() {
+                console.log('Клик по кнопке создания комнаты');
                 // Запрашиваем имя комнаты
                 const roomName = prompt('Введите название комнаты:');
                 if (roomName && roomName.trim()) {
                     // Генерируем случайный ID комнаты
                     const roomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                    console.log('Создаем комнату:', roomId, roomName);
                     
                     // Отправляем запрос на создание комнаты
                     socket.emit('create_room', { 
@@ -861,7 +876,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Сразу переключаемся на новую комнату
                     joinRoom(roomId);
                 }
-            });
+            };
+        } else {
+            console.error('Кнопка создания комнаты не найдена по ID');
         }
         
         // Настраиваем обработчики списка комнат
@@ -869,13 +886,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Обработчики автоудаления
         if (autoDeleteToggle) {
-            // Удаляем существующие обработчики
-            const oldToggle = autoDeleteToggle;
-            const newToggle = oldToggle.cloneNode(true);
-            oldToggle.parentNode.replaceChild(newToggle, oldToggle);
-            autoDeleteToggle = newToggle;
-            
-            autoDeleteToggle.addEventListener('change', (e) => {
+            // Удаляем существующие обработчики путем установки напрямую
+            autoDeleteToggle.onchange = function(e) {
                 autoDeleteEnabled = e.target.checked;
                 
                 if (currentRoom && currentRoom !== 'general') {
@@ -886,17 +898,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 saveSettings();
-            });
+            };
         }
         
         if (deleteTimeSelect) {
-            // Удаляем существующие обработчики
-            const oldSelect = deleteTimeSelect;
-            const newSelect = oldSelect.cloneNode(true);
-            oldSelect.parentNode.replaceChild(newSelect, oldSelect);
-            deleteTimeSelect = newSelect;
-            
-            deleteTimeSelect.addEventListener('change', (e) => {
+            // Удаляем существующие обработчики путем установки напрямую
+            deleteTimeSelect.onchange = function(e) {
                 messageLifetime = parseInt(e.target.value);
                 
                 if (currentRoom && currentRoom !== 'general') {
@@ -907,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 saveSettings();
-            });
+            };
         }
         
         // Загружаем и обновляем список комнат
@@ -1016,6 +1023,7 @@ document.addEventListener('DOMContentLoaded', () => {
         addSystemMessageToUI(`Вы вошли в комнату: ${roomName}`);
         
         currentRoom = roomId;
+        window.currentRoom = currentRoom;
         updateRoomsList();
         
         // Очищаем контейнер сообщений
@@ -1051,6 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addSystemMessageToUI(`Вы вышли из комнаты: ${roomName}`);
             
             currentRoom = 'general';
+            window.currentRoom = currentRoom;
             updateRoomsList();
             
             // Очищаем контейнер сообщений
@@ -1090,6 +1099,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Ошибка при сохранении настроек:', error);
         }
     }
+    window.saveSettings = saveSettings;
     
     // Загрузка настроек комнат
     function loadSettings() {
@@ -1305,10 +1315,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Модифицированная функция отправки сообщения
     function sendMessage() {
+        console.log('Вызвана функция отправки сообщения');
         const text = messageInput.value.trim();
         
         // Если нет ни текста, ни изображения
-        if (!text && !currentImage) return;
+        if (!text && !currentImage) {
+            console.log('Нет текста и изображения для отправки');
+            return;
+        }
         
         const message = {
             text,
@@ -1331,6 +1345,43 @@ document.addEventListener('DOMContentLoaded', () => {
             imagePreviewContainer.style.display = 'none';
             imageUpload.value = '';
         }
+        
+        // Обновляем UI после отправки
+        scrollToBottom();
+    }
+
+    // Добавление обработчиков для отправки сообщений (вызывается в основном блоке кода)
+    function setupMessageHandlers() {
+        console.log('Настройка обработчиков отправки сообщений');
+        // Получаем ссылки на элементы
+        const sendBtn = document.getElementById('send-button');
+        const msgInput = document.getElementById('message-input');
+        
+        if (sendBtn) {
+            console.log('Найдена кнопка отправки сообщения');
+            // Напрямую добавляем обработчик
+            sendBtn.onclick = function(e) {
+                console.log('Клик по кнопке отправки');
+                e.preventDefault();
+                sendMessage();
+            };
+        } else {
+            console.error('Кнопка отправки сообщения не найдена');
+        }
+        
+        if (msgInput) {
+            console.log('Найдено поле ввода сообщения');
+            // Напрямую добавляем обработчик
+            msgInput.onkeydown = function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    console.log('Нажата клавиша Enter');
+                    e.preventDefault();
+                    sendMessage();
+                }
+            };
+        } else {
+            console.error('Поле ввода сообщения не найдено');
+        }
     }
 
     // Обработчик прокрутки чата
@@ -1342,62 +1393,156 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Функция инициализации интерфейса - вызывается только один раз
     function initializeUI() {
+        console.log('Инициализация пользовательского интерфейса');
+        
         // Инициализируем обработчики только если еще не инициализированы
         if (!window.uiInitialized) {
             setupRoomHandlers();
             setupThemeHandler();
             setupOtherImageHandlers();
-            
-            // Оборачиваем элементы ввода в форму, если она не существует
-            const messageInputContainer = document.querySelector('.message-input-container');
-            if (messageInputContainer && !document.getElementById('message-form')) {
-                // Создаем форму
-                const form = document.createElement('form');
-                form.id = 'message-form';
-                
-                // Перемещаем все дочерние элементы в форму
-                while (messageInputContainer.firstChild) {
-                    form.appendChild(messageInputContainer.firstChild);
-                }
-                
-                // Добавляем форму в контейнер
-                messageInputContainer.appendChild(form);
-            }
-            
-            // Получаем ссылку на форму после её создания
-            const messageForm = document.getElementById('message-form');
-            if (messageForm) {
-                messageForm.addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    sendMessage();
-                });
-            }
-            
-            // Обработчик кнопки отправки сообщения (переопределяем на всякий случай)
-            const sendButton = document.getElementById('send-button');
-            if (sendButton) {
-                sendButton.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    sendMessage();
-                });
-            }
-            
-            // Обработчик отправки по Enter
-            const messageInput = document.getElementById('message-input');
-            if (messageInput) {
-                messageInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                });
-            }
+            setupMessageHandlers();
             
             // Отмечаем, что UI уже инициализирован
             window.uiInitialized = true;
+            console.log('UI инициализирован');
+        } else {
+            console.log('UI уже был инициализирован ранее');
         }
         
         // Обновляем список комнат в любом случае
         updateRoomsList();
     }
+
+    // Добавляем обработчик отправки по Enter для текстового поля
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM загружен');
+        
+        // Находим элемент ввода сообщения
+        const textInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-button');
+        
+        // Добавляем глобальный обработчик для текстового поля
+        if (textInput) {
+            console.log('Добавляю глобальный обработчик для текстового поля');
+            
+            textInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    console.log('Нажат Enter без Shift');
+                    e.preventDefault();
+                    if (isLoggedIn && socket) {
+                        sendMessage();
+                    } else {
+                        console.log('Пользователь не авторизован или сокет не инициализирован');
+                    }
+                    return false;
+                }
+            });
+        }
+        
+        // Добавляем глобальный обработчик для кнопки отправки
+        if (sendBtn) {
+            console.log('Добавляю глобальный обработчик для кнопки отправки');
+            
+            sendBtn.addEventListener('click', function(e) {
+                console.log('Клик по кнопке отправки (DOMContentLoaded)');
+                e.preventDefault();
+                if (isLoggedIn && socket) {
+                    sendMessage();
+                } else {
+                    console.log('Пользователь не авторизован или сокет не инициализирован');
+                }
+                return false;
+            });
+        }
+    });
+
+    // Добавляем прямые обработчики в конце файла
+    (function() {
+        // Ждем полной загрузки документа
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Инициализация прямых обработчиков после загрузки DOM');
+            
+            // Обработчик для кнопки создания комнаты
+            const createRoomBtn = document.getElementById('create-room-button');
+            if (createRoomBtn) {
+                console.log('Добавляю прямой обработчик для кнопки создания комнаты');
+                createRoomBtn.onclick = function() {
+                    console.log('Прямой клик по кнопке создания комнаты');
+                    const roomName = prompt('Введите название комнаты:');
+                    if (roomName && roomName.trim() && window.socket) {
+                        // Генерируем случайный ID комнаты
+                        const roomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                        console.log('Создание комнаты:', roomId, roomName.trim());
+                        
+                        // Отправляем запрос на создание комнаты
+                        window.socket.emit('create_room', { 
+                            roomId, 
+                            roomName: roomName.trim(),
+                            creator: window.username,
+                            autoDeleteEnabled: true,
+                            messageLifetime: 30000
+                        });
+                        
+                        // Обновляем список комнат
+                        if (window.rooms) {
+                            window.rooms.set(roomId, { 
+                                name: roomName.trim(), 
+                                autoDeleteEnabled: true, 
+                                messageLifetime: 30000 
+                            });
+                            if (typeof window.saveSettings === 'function') {
+                                window.saveSettings();
+                            }
+                            if (typeof window.updateRoomsList === 'function') {
+                                window.updateRoomsList();
+                            }
+                            if (typeof window.joinRoom === 'function') {
+                                window.joinRoom(roomId);
+                            }
+                        }
+                    }
+                };
+            }
+            
+            // Обработчик для кнопки отправки сообщения
+            const sendButton = document.getElementById('send-button');
+            const messageInput = document.getElementById('message-input');
+            
+            if (sendButton && messageInput) {
+                console.log('Добавляю прямой обработчик для кнопки отправки сообщения');
+                
+                sendButton.onclick = function(e) {
+                    e.preventDefault();
+                    console.log('Прямой клик по кнопке отправки сообщения');
+                    
+                    const text = messageInput.value.trim();
+                    if (!text) return;
+                    
+                    if (window.socket) {
+                        const message = {
+                            text: text,
+                            username: window.username,
+                            displayName: window.displayName,
+                            timestamp: Date.now(),
+                            roomId: window.currentRoom,
+                            hasImage: false
+                        };
+                        
+                        console.log('Отправка сообщения напрямую:', message);
+                        window.socket.emit('message', message);
+                        messageInput.value = '';
+                    }
+                };
+                
+                // Обработчик для поля ввода (Enter)
+                messageInput.onkeydown = function(e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendButton.click();
+                        return false;
+                    }
+                };
+            }
+        });
+    })();
 }); 
