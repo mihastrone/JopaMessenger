@@ -806,7 +806,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Сохраняем кэш сообщений при закрытии страницы
+    // Сохранение кэша сообщений при закрытии страницы
     window.addEventListener('beforeunload', () => {
         saveCachedMessages();
         
@@ -826,44 +826,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Удаляем комментарий о звуковых настройках
     initializeUI();
     
-    // Добавление обработчика отправки сообщений для формы
-    const messageForm = document.getElementById('message-form');
-    if (messageForm) {
-        messageForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            sendMessage();
-        });
-    }
-    
-    // Обработчик кнопки отправки сообщения
-    if (sendButton) {
-        sendButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            sendMessage();
-        });
-    }
-    
-    // Обработчик отправки по Enter
-    if (messageInput) {
-        messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-    }
-
-    // Функция инициализации интерфейса
-    function initializeUI() {
-        setupRoomHandlers();
-        setupThemeHandler();
-        setupOtherImageHandlers();
-    }
-    
     // Настройка обработчиков комнат
     function setupRoomHandlers() {
-        // Кнопка создания комнаты
+        // Сначала удаляем существующие обработчики, чтобы избежать дублирования
         if (createRoomButton) {
+            // Клонируем элемент для удаления всех обработчиков
+            const oldButton = createRoomButton;
+            const newButton = oldButton.cloneNode(true);
+            oldButton.parentNode.replaceChild(newButton, oldButton);
+            createRoomButton = newButton;
+            
+            // Добавляем обработчик создания комнаты
             createRoomButton.addEventListener('click', () => {
                 // Запрашиваем имя комнаты
                 const roomName = prompt('Введите название комнаты:');
@@ -891,11 +864,17 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // Обработчик списка комнат (переносим в функцию, чтобы не дублировать код)
+        // Настраиваем обработчики списка комнат
         setupRoomListHandlers();
         
         // Обработчики автоудаления
         if (autoDeleteToggle) {
+            // Удаляем существующие обработчики
+            const oldToggle = autoDeleteToggle;
+            const newToggle = oldToggle.cloneNode(true);
+            oldToggle.parentNode.replaceChild(newToggle, oldToggle);
+            autoDeleteToggle = newToggle;
+            
             autoDeleteToggle.addEventListener('change', (e) => {
                 autoDeleteEnabled = e.target.checked;
                 
@@ -911,6 +890,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (deleteTimeSelect) {
+            // Удаляем существующие обработчики
+            const oldSelect = deleteTimeSelect;
+            const newSelect = oldSelect.cloneNode(true);
+            oldSelect.parentNode.replaceChild(newSelect, oldSelect);
+            deleteTimeSelect = newSelect;
+            
             deleteTimeSelect.addEventListener('change', (e) => {
                 messageLifetime = parseInt(e.target.value);
                 
@@ -929,20 +914,60 @@ document.addEventListener('DOMContentLoaded', () => {
         updateRoomsList();
     }
     
+    // Обновление списка комнат
+    function updateRoomsList() {
+        // Проверяем существование элемента
+        const roomsListElement = document.getElementById('rooms-list');
+        if (!roomsListElement) {
+            console.error('Элемент rooms-list не найден');
+            return;
+        }
+        
+        // Очищаем список комнат
+        roomsListElement.innerHTML = '';
+        
+        // Сначала общий чат
+        const generalRoomElement = document.createElement('div');
+        generalRoomElement.classList.add('room-item');
+        generalRoomElement.innerHTML = `
+            <button class="room-button ${currentRoom === 'general' ? 'active' : ''}" data-roomid="general">
+                Общий чат
+            </button>
+        `;
+        roomsListElement.appendChild(generalRoomElement);
+        
+        // Затем все остальные комнаты
+        console.log('Обновление списка комнат, текущие комнаты:', Array.from(rooms.entries()));
+        rooms.forEach((room, roomId) => {
+            const roomElement = document.createElement('div');
+            roomElement.classList.add('room-item');
+            roomElement.innerHTML = `
+                <button class="room-button ${currentRoom === roomId ? 'active' : ''}" data-roomid="${roomId}">
+                    ${room.name}
+                </button>
+                <button class="room-delete" data-roomid="${roomId}">&times;</button>
+            `;
+            roomsListElement.appendChild(roomElement);
+        });
+        
+        // Добавляем обработчики к новым кнопкам
+        setupRoomListHandlers();
+    }
+    
     // Отдельная функция для обработчиков комнат
     function setupRoomListHandlers() {
-        if (!roomsList) return;
+        // Обновляем ссылку на элемент списка комнат
+        const roomsListElement = document.getElementById('rooms-list');
+        if (!roomsListElement) {
+            console.error('Элемент rooms-list не найден при установке обработчиков');
+            return;
+        }
         
-        // Сначала удаляем старые обработчики, чтобы избежать дублирования
-        const oldElement = roomsList;
-        const newElement = oldElement.cloneNode(true);
-        oldElement.parentNode.replaceChild(newElement, oldElement);
-        roomsList = newElement;
-        
-        // Добавляем новые обработчики
-        roomsList.addEventListener('click', function(e) {
+        // Добавляем обработчик для кнопок в списке комнат
+        roomsListElement.addEventListener('click', function(e) {
             if (e.target.classList.contains('room-button')) {
                 const roomId = e.target.dataset.roomid;
+                console.log('Клик по кнопке комнаты:', roomId);
                 
                 if (currentRoom === roomId) {
                     // Выход из комнаты при повторном клике
@@ -953,41 +978,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else if (e.target.classList.contains('room-delete')) {
                 const roomId = e.target.dataset.roomid;
+                console.log('Клик по кнопке удаления комнаты:', roomId);
+                
                 if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
                     console.log('Отправляю запрос на удаление комнаты:', roomId);
                     socket.emit('delete_room', { roomId });
                 }
             }
-        });
-    }
-    
-    // Обновление списка комнат
-    function updateRoomsList() {
-        if (!roomsList) return;
-        
-        roomsList.innerHTML = '';
-        
-        // Сначала общий чат
-        const generalRoomElement = document.createElement('div');
-        generalRoomElement.classList.add('room-item');
-        generalRoomElement.innerHTML = `
-            <button class="room-button ${currentRoom === 'general' ? 'active' : ''}" data-roomid="general">
-                Общий чат
-            </button>
-        `;
-        roomsList.appendChild(generalRoomElement);
-        
-        // Затем все остальные комнаты
-        rooms.forEach((room, roomId) => {
-            const roomElement = document.createElement('div');
-            roomElement.classList.add('room-item');
-            roomElement.innerHTML = `
-                <button class="room-button ${currentRoom === roomId ? 'active' : ''}" data-roomid="${roomId}">
-                    ${room.name}
-                </button>
-                <button class="room-delete" data-roomid="${roomId}">&times;</button>
-            `;
-            roomsList.appendChild(roomElement);
         });
     }
     
@@ -1075,24 +1072,30 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Сохранение настроек комнат
     function saveSettings() {
-        const settings = {};
-        rooms.forEach((room, roomId) => {
-            settings[roomId] = {
-                name: room.name,
-                autoDeleteEnabled: room.autoDeleteEnabled,
-                messageLifetime: room.messageLifetime
-            };
-        });
-        
-        localStorage.setItem('chat_rooms', JSON.stringify(settings));
-        localStorage.setItem('auto_delete_enabled', JSON.stringify(autoDeleteEnabled));
-        localStorage.setItem('message_lifetime', JSON.stringify(messageLifetime));
+        try {
+            const settings = {};
+            rooms.forEach((room, roomId) => {
+                settings[roomId] = {
+                    name: room.name,
+                    autoDeleteEnabled: room.autoDeleteEnabled,
+                    messageLifetime: room.messageLifetime
+                };
+            });
+            
+            console.log('Сохраняю настройки комнат:', settings);
+            localStorage.setItem('chat_rooms', JSON.stringify(settings));
+            localStorage.setItem('auto_delete_enabled', JSON.stringify(autoDeleteEnabled));
+            localStorage.setItem('message_lifetime', JSON.stringify(messageLifetime));
+        } catch (error) {
+            console.error('Ошибка при сохранении настроек:', error);
+        }
     }
     
     // Загрузка настроек комнат
     function loadSettings() {
         try {
             const savedRooms = JSON.parse(localStorage.getItem('chat_rooms')) || {};
+            console.log('Загружаю сохраненные комнаты:', savedRooms);
             rooms = new Map(Object.entries(savedRooms));
             
             const savedAutoDelete = JSON.parse(localStorage.getItem('auto_delete_enabled'));
@@ -1110,6 +1113,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     deleteTimeSelect.value = messageLifetime;
                 }
             }
+            
+            // Обновляем список комнат после загрузки
+            updateRoomsList();
         } catch (error) {
             console.error('Ошибка загрузки настроек:', error);
         }
@@ -1314,6 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
             image: currentImage
         };
         
+        console.log('Отправка сообщения:', message);
         socket.emit('message', message);
         messageInput.value = '';
         
@@ -1332,4 +1339,65 @@ document.addEventListener('DOMContentLoaded', () => {
         const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
         shouldScrollToBottom = isAtBottom;
     });
+
+    // Функция инициализации интерфейса - вызывается только один раз
+    function initializeUI() {
+        // Инициализируем обработчики только если еще не инициализированы
+        if (!window.uiInitialized) {
+            setupRoomHandlers();
+            setupThemeHandler();
+            setupOtherImageHandlers();
+            
+            // Оборачиваем элементы ввода в форму, если она не существует
+            const messageInputContainer = document.querySelector('.message-input-container');
+            if (messageInputContainer && !document.getElementById('message-form')) {
+                // Создаем форму
+                const form = document.createElement('form');
+                form.id = 'message-form';
+                
+                // Перемещаем все дочерние элементы в форму
+                while (messageInputContainer.firstChild) {
+                    form.appendChild(messageInputContainer.firstChild);
+                }
+                
+                // Добавляем форму в контейнер
+                messageInputContainer.appendChild(form);
+            }
+            
+            // Получаем ссылку на форму после её создания
+            const messageForm = document.getElementById('message-form');
+            if (messageForm) {
+                messageForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    sendMessage();
+                });
+            }
+            
+            // Обработчик кнопки отправки сообщения (переопределяем на всякий случай)
+            const sendButton = document.getElementById('send-button');
+            if (sendButton) {
+                sendButton.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    sendMessage();
+                });
+            }
+            
+            // Обработчик отправки по Enter
+            const messageInput = document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                });
+            }
+            
+            // Отмечаем, что UI уже инициализирован
+            window.uiInitialized = true;
+        }
+        
+        // Обновляем список комнат в любом случае
+        updateRoomsList();
+    }
 }); 
