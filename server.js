@@ -93,8 +93,8 @@ if (!fs.existsSync(defaultAvatarPath) && avatarsExists) {
       // Создаем пустой файл, если изображений нет
       fs.writeFileSync(defaultAvatarPath, Buffer.from(''), 'binary');
       console.log('Создан пустой файл аватара по умолчанию');
-    }
-  } catch (error) {
+  }
+} catch (error) {
     console.error('ОШИБКА при создании аватара по умолчанию:', error);
   }
 }
@@ -329,8 +329,8 @@ function authenticateUser(username, password) {
   } 
   else if (user.salt && user.hash) {
     // Новый формат - с солью и более сложным хешированием
-    if (!verifyPassword(password, user.salt, user.hash)) {
-      return { success: false, message: 'Неверный пароль' };
+  if (!verifyPassword(password, user.salt, user.hash)) {
+    return { success: false, message: 'Неверный пароль' };
     }
   }
   else {
@@ -693,20 +693,20 @@ io.on('connection', (socket) => {
           return;
         }
         
-        // Конвертируем base64 в бинарные данные
-        const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
-        const buffer = Buffer.from(base64Data, 'base64');
-        
-        // Генерируем уникальное имя файла
-        const filename = `${username}_${Date.now()}.jpg`;
-        const avatarPath = path.join(AVATARS_DIR, filename);
-        
+      // Конвертируем base64 в бинарные данные
+      const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      // Генерируем уникальное имя файла
+      const filename = `${username}_${Date.now()}.jpg`;
+      const avatarPath = path.join(AVATARS_DIR, filename);
+      
         // Сохраняем файл синхронно для гарантии сохранения перед отправкой ответа
         fs.writeFileSync(avatarPath, buffer);
         console.log(`Аватар для ${username} успешно сохранен: ${avatarPath}`);
-        
-        // Сохраняем путь к аватару (относительный путь для клиента)
-        userAvatars[username] = `/uploads/avatars/${filename}`;
+          
+          // Сохраняем путь к аватару (относительный путь для клиента)
+          userAvatars[username] = `/uploads/avatars/${filename}`;
         
         // Синхронизируем с userManager
         userManager.userDatabase = userDatabase;
@@ -751,16 +751,16 @@ io.on('connection', (socket) => {
       // Синхронизируем с userManager
       userManager.userDatabase = userDatabase;
       userManager.userAvatars = userAvatars;
-      
-      // Сохраняем учетные данные в файл
+    
+    // Сохраняем учетные данные в файл
       saveAllData();
-      
-      // Отправляем успешный ответ
-      socket.emit('register_response', { 
-        success: true, 
-        message: 'Регистрация успешна! Теперь вы можете войти.',
-        avatarUrl: userAvatars[username]
-      });
+    
+    // Отправляем успешный ответ
+    socket.emit('register_response', { 
+      success: true, 
+      message: 'Регистрация успешна! Теперь вы можете войти.',
+      avatarUrl: userAvatars[username]
+    });
     }
   });
   
@@ -828,24 +828,24 @@ io.on('connection', (socket) => {
         // Сохраняем данные
         saveAllData();
         
-        // Авторизуем пользователя после успешной регистрации
-        users[socket.id] = username;
-        activeUsers[username] = { socketId: socket.id, displayName };
+      // Авторизуем пользователя после успешной регистрации
+      users[socket.id] = username;
+      activeUsers[username] = { socketId: socket.id, displayName };
         
         // Добавляем URL аватара к результату
         result.avatar = userAvatars[username];
-        
-        // Отправляем актуальные сообщения
-        socket.emit('message-history', messages);
-        
-        // Обновляем список пользователей для всех
-        io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
-        
-        // Создаем системное сообщение о подключении
-        const systemMessage = `${displayName} подключился к чату`;
-        io.emit('system-message', systemMessage);
-        
-        console.log(`Пользователь ${username} (${displayName}) зарегистрирован`);
+      
+      // Отправляем актуальные сообщения
+      socket.emit('message-history', messages);
+      
+      // Обновляем список пользователей для всех
+      io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
+      
+      // Создаем системное сообщение о подключении
+      const systemMessage = `${displayName} подключился к чату`;
+      io.emit('system-message', systemMessage);
+      
+      console.log(`Пользователь ${username} (${displayName}) зарегистрирован`);
       } catch (error) {
         console.error(`Ошибка при регистрации пользователя ${username}:`, error);
         // Устанавливаем аватар по умолчанию в случае ошибки
@@ -1301,7 +1301,7 @@ io.on('connection', (socket) => {
   });
 
   // Обработчик обновления аватара
-  socket.on('update_avatar', (data) => {
+  socket.on('update_avatar', async (data) => {
     const username = users[socket.id];
     
     // Проверка авторизации
@@ -1320,10 +1320,10 @@ io.on('connection', (socket) => {
         
         // Сохраняем изменения
         saveAllData();
-        
-        // Отправляем успешный ответ
-        socket.emit('avatar_update_response', { 
-            success: true, 
+            
+            // Отправляем успешный ответ
+            socket.emit('avatar_update_response', { 
+                success: true, 
             message: 'Аватар сброшен на стандартный',
             avatarUrl: '/uploads/default-avatar.png'
         });
@@ -1419,8 +1419,8 @@ io.on('connection', (socket) => {
         userManager.userAvatars = userAvatars;
         
         // Сохраняем обновленные аватары
-        saveAllData();
-        
+    saveAllData();
+    
         // Отправляем успешный ответ
         socket.emit('avatar_update_response', { 
             success: true, 
@@ -1440,7 +1440,7 @@ io.on('connection', (socket) => {
   socket.on('register_simple', (data) => {
     console.log('Получен запрос на упрощенную регистрацию:', data);
     
-    const { username, password, displayName } = data;
+    const { username, password, displayName, disableAvatars } = data;
     
     // Базовая валидация
     if (!username || !password) {
@@ -1466,19 +1466,23 @@ io.on('connection', (socket) => {
         displayName: displayName || username,
         // Для тестовой версии используем простое хеширование без соли
         password: crypto.createHash('sha256').update(password).digest('hex'),
-        created: Date.now()
+        created: Date.now(),
+        disableAvatars: !!disableAvatars
       };
       
-      // Устанавливаем аватар по умолчанию
-      userAvatars[username] = '/uploads/default-avatar.png';
+      // Устанавливаем аватар по умолчанию если аватары не отключены
+      if (!disableAvatars) {
+        userAvatars[username] = '/uploads/default-avatar.png';
+      }
       
       console.log(`Пользователь ${username} успешно зарегистрирован (упрощенная регистрация)`);
+      console.log(`Аватары для пользователя ${username}: ${disableAvatars ? 'отключены' : 'включены'}`);
       
       // Отправляем успешный ответ
       socket.emit('register_response', { 
         success: true, 
         message: 'Регистрация успешна! Теперь вы можете войти.',
-        avatarUrl: userAvatars[username]
+        avatarUrl: disableAvatars ? null : userAvatars[username]
       });
     } catch (error) {
       console.error('Ошибка при упрощенной регистрации:', error);
@@ -1496,7 +1500,7 @@ io.on('connection', (socket) => {
     const { username, password } = data;
     
     if (!username || !password) {
-      socket.emit('auth_result', { 
+      socket.emit('authenticate_response', { 
         success: false, 
         message: 'Отсутствуют обязательные поля' 
       });
@@ -1508,7 +1512,7 @@ io.on('connection', (socket) => {
       const user = userDatabase[username];
       
       if (!user) {
-        socket.emit('auth_result', { 
+        socket.emit('authenticate_response', { 
           success: false, 
           message: 'Пользователь не найден' 
         });
@@ -1525,13 +1529,18 @@ io.on('connection', (socket) => {
           displayName: user.displayName || username 
         };
         
+        // Проверяем, отключены ли аватары у пользователя
+        const disableAvatars = user.disableAvatars || false;
+        console.log(`Аутентификация пользователя ${username}, аватары: ${disableAvatars ? 'отключены' : 'включены'}`);
+        
         // Формируем результат
         const authResult = {
           success: true,
           message: 'Авторизация успешна',
           username: username,
           displayName: user.displayName || username,
-          avatar: userAvatars[username] || '/uploads/default-avatar.png'
+          token: 'simple-mode-token', // Добавляем токен для совместимости
+          avatarUrl: disableAvatars ? null : (userAvatars[username] || '/uploads/default-avatar.png')
         };
         
         // Отправляем актуальные сообщения
@@ -1547,16 +1556,16 @@ io.on('connection', (socket) => {
         console.log(`Пользователь ${username} успешно авторизован (упрощенный метод)`);
         
         // Отправляем результат
-        socket.emit('auth_result', authResult);
+        socket.emit('authenticate_response', authResult);
       } else {
-        socket.emit('auth_result', { 
+        socket.emit('authenticate_response', { 
           success: false, 
           message: 'Неверный пароль' 
         });
       }
     } catch (error) {
       console.error('Ошибка при упрощенной аутентификации:', error);
-      socket.emit('auth_result', { 
+      socket.emit('authenticate_response', { 
         success: false, 
         message: 'Ошибка при аутентификации: ' + error.message 
       });
@@ -1637,13 +1646,13 @@ function cleanupOldAvatars() {
             console.log(`Файл ${file} еще не достиг возраста для удаления: ${Math.round(fileAge / (1000 * 60 * 60))}/${Math.round(IMAGE_MAX_AGE / (1000 * 60 * 60))} часов`);
           }
         }
-      } catch (error) {
+    } catch (error) {
         console.error(`Ошибка при обработке файла аватара ${file}:`, error);
       }
     });
     
     console.log(`Очистка аватаров завершена. Удалено ${deletedCount} файлов.`);
-  } catch (error) {
+    } catch (error) {
     console.error('Ошибка при очистке старых аватаров:', error);
   }
 }

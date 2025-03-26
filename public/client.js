@@ -227,8 +227,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const passwordConfirm = document.getElementById('register-password-confirm').value;
         const displayName = document.getElementById('register-display-name').value.trim() || username;
         const isSimpleMode = document.getElementById('simple-mode') ? document.getElementById('simple-mode').checked : false;
+        const disableAvatars = document.getElementById('disable-avatars') ? document.getElementById('disable-avatars').checked : false;
         
-        console.log('Нажата кнопка регистрации. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный'));
+        console.log('Нажата кнопка регистрации. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный') + 
+                    ', аватары: ' + (disableAvatars ? 'отключены' : 'включены'));
         
         // Проверки
         if (!username) {
@@ -251,7 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
             username: username,
             password: password,
             displayName: displayName,
-            avatar: currentAvatar
+            avatar: disableAvatars ? null : currentAvatar,
+            disableAvatars: disableAvatars
         };
         
         // Отправка в зависимости от режима
@@ -269,8 +272,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
         const isSimpleMode = document.getElementById('simple-mode') ? document.getElementById('simple-mode').checked : false;
+        const disableAvatars = document.getElementById('disable-avatars') ? document.getElementById('disable-avatars').checked : false;
         
-        console.log('Нажата кнопка входа. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный'));
+        console.log('Нажата кнопка входа. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный') +
+                    ', аватары: ' + (disableAvatars ? 'отключены' : 'включены'));
         
         if (!username) {
             alert('Пожалуйста, введите имя пользователя');
@@ -285,7 +290,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Данные для отправки
         const loginData = {
             username: username,
-            password: password
+            password: password,
+            disableAvatars: disableAvatars
         };
         
         // Отправка в зависимости от режима
