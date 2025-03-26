@@ -514,17 +514,17 @@ io.on('connection', (socket) => {
               'с изображением:', !!message.image);
     
     // Проверяем, авторизован ли пользователь
-    const userIndex = activeUsers.findIndex(u => u.socketId === socket.id);
-    if (userIndex === -1) {
+    const username = users[socket.id];
+    if (!username || !activeUsers[username]) {
         console.error('Неавторизованный пользователь пытается отправить сообщение:', socket.id);
         socket.emit('error-message', { message: 'Вы не авторизованы' });
         return;
     }
     
-    const user = activeUsers[userIndex];
+    const user = activeUsers[username];
     
     // Дополняем сообщение информацией о пользователе
-    message.username = user.username;
+    message.username = username;
     message.displayName = user.displayName;
     
     if (!message.timestamp) {
@@ -552,8 +552,49 @@ io.on('connection', (socket) => {
         }
     }
     
-    // Сохраняем сообщение в базе данных
-    saveMessage(message);
+    // Сохраняем сообщение в соответствующем хранилище
+    if (message.roomId && message.roomId !== 'general') {
+        // Сообщение для приватной комнаты
+        const room = rooms.get(message.roomId);
+        if (room) {
+            // Создаем объект для хранения в истории комнаты
+            const roomMessage = new Message(
+                Date.now(),
+                username,
+                message.text,
+                new Date().toISOString(),
+                message.roomId,
+                room.autoDeleteEnabled,
+                room.messageLifetime,
+                message.image,
+                user.displayName
+            );
+            
+            // Добавляем сообщение в историю комнаты
+            room.messages.push(roomMessage);
+            
+            // Планируем удаление сообщения, если включено автоудаление в комнате
+            if (room.autoDeleteEnabled) {
+                scheduleMessageDeletion(roomMessage.id, room.messageLifetime);
+            }
+        }
+    } else {
+        // Сообщение для общего чата
+        const generalMessage = new Message(
+            Date.now(),
+            username,
+            message.text,
+            new Date().toISOString(),
+            'general',
+            false,
+            DEFAULT_MESSAGE_LIFETIME,
+            message.image,
+            user.displayName
+        );
+        
+        // Добавляем сообщение в историю общего чата
+        messages.push(generalMessage);
+    }
     
     // Отправляем сообщение всем клиентам в зависимости от типа (общий чат или комната)
     if (message.roomId && message.roomId !== 'general') {
