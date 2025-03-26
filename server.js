@@ -6,7 +6,7 @@ const path = require('path');
 
 // Порт берется из переменных окружения (для облачного хостинга)
 const PORT = process.env.PORT || 3000;
-const MESSAGE_LIFETIME = 30000; // 30 секунд
+const DEFAULT_MESSAGE_LIFETIME = 30000; // 30 секунд по умолчанию
 
 const app = express();
 
@@ -55,13 +55,25 @@ const io = socketIo(server, {
   path: '/socket.io/'
 });
 
-// Хранение сообщений и активных пользователей
+// Хранение сообщений, пользователей и таймеров
 const messages = [];
 const users = {};
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
 
+// Класс для сообщений с расширенными атрибутами
+class Message {
+  constructor(id, user, text, timestamp, autoDelete = true, lifetime = DEFAULT_MESSAGE_LIFETIME) {
+    this.id = id;
+    this.user = user;
+    this.text = text;
+    this.timestamp = timestamp;
+    this.autoDelete = autoDelete;
+    this.lifetime = lifetime;
+  }
+}
+
 // Функция для удаления сообщения из истории
-function scheduleMessageDeletion(messageId) {
+function scheduleMessageDeletion(messageId, lifetime) {
   // Отменяем существующий таймер, если он есть
   if (messageTimers[messageId]) {
     clearTimeout(messageTimers[messageId]);
@@ -80,7 +92,7 @@ function scheduleMessageDeletion(messageId) {
     
     // Удаляем таймер из хранилища
     delete messageTimers[messageId];
-  }, MESSAGE_LIFETIME);
+  }, lifetime || DEFAULT_MESSAGE_LIFETIME);
 }
 
 // Для отладки подключений
@@ -114,18 +126,28 @@ io.on('connection', (socket) => {
   // Получение сообщения
   socket.on('send-message', (messageData) => {
     const messageId = Date.now();
-    const message = {
-      id: messageId,
-      user: users[socket.id],
-      text: messageData.text,
-      timestamp: new Date().toISOString()
-    };
+    
+    // Получаем параметры автоудаления
+    const autoDelete = messageData.autoDelete !== undefined ? messageData.autoDelete : true;
+    const lifetime = messageData.lifetime || DEFAULT_MESSAGE_LIFETIME;
+    
+    // Создаем объект сообщения
+    const message = new Message(
+      messageId,
+      users[socket.id],
+      messageData.text,
+      new Date().toISOString(),
+      autoDelete,
+      lifetime
+    );
     
     // Добавляем сообщение в историю
     messages.push(message);
     
-    // Планируем удаление этого сообщения
-    scheduleMessageDeletion(messageId);
+    // Планируем удаление этого сообщения, если включено автоудаление
+    if (autoDelete) {
+      scheduleMessageDeletion(messageId, lifetime);
+    }
     
     // Отправляем сообщение всем клиентам
     io.emit('new-message', message);

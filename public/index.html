@@ -26,7 +26,7 @@
     <div class="app">
         <div class="login-screen" id="login-screen">
             <h1>Jopa Messenger</h1>
-            <p class="subtitle">Сообщения исчезают через 30 секунд</p>
+            <p class="subtitle">Онлайн-чат с автоудалением сообщений</p>
             <div class="login-form">
                 <input type="text" id="username-input" placeholder="Ваше имя" maxlength="20">
                 <div class="connection-status" id="connection-status"></div>
@@ -50,6 +50,27 @@
                     <div class="online-users">
                         <h3>Онлайн (<span id="user-count">0</span>)</h3>
                         <ul id="user-list"></ul>
+                    </div>
+                    
+                    <div class="settings-panel">
+                        <h3>Настройки</h3>
+                        <div class="setting-item">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="auto-delete-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span>Автоудаление</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="delete-time-select">Время удаления:</label>
+                            <select id="delete-time-select">
+                                <option value="15000">15 секунд</option>
+                                <option value="20000">20 секунд</option>
+                                <option value="30000" selected>30 секунд</option>
+                                <option value="60000">1 минута</option>
+                                <option value="300000">5 минут</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 

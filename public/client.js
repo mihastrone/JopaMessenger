@@ -11,14 +11,100 @@ document.addEventListener('DOMContentLoaded', () => {
     const userCount = document.getElementById('user-count');
     const connectedServer = document.getElementById('connected-server');
     const connectionStatus = document.getElementById('connection-status');
+    const autoDeleteToggle = document.getElementById('auto-delete-toggle');
+    const deleteTimeSelect = document.getElementById('delete-time-select');
     
-    // Константы
-    const MESSAGE_LIFETIME = 30000; // 30 секунд
+    // Настройки автоудаления
+    let autoDeleteEnabled = true;
+    let messageLifetime = 30000; // 30 секунд по умолчанию
     const COUNTDOWN_UPDATE_INTERVAL = 1000; // 1 секунда
 
     let socket;
     let username = '';
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
+    
+    // Загрузка настроек из localStorage
+    function loadSettings() {
+        if (localStorage.getItem('autoDeleteEnabled') !== null) {
+            autoDeleteEnabled = localStorage.getItem('autoDeleteEnabled') === 'true';
+            autoDeleteToggle.checked = autoDeleteEnabled;
+        }
+        
+        if (localStorage.getItem('messageLifetime') !== null) {
+            messageLifetime = parseInt(localStorage.getItem('messageLifetime'));
+            deleteTimeSelect.value = messageLifetime.toString();
+        }
+    }
+    
+    // Сохранение настроек в localStorage
+    function saveSettings() {
+        localStorage.setItem('autoDeleteEnabled', autoDeleteEnabled);
+        localStorage.setItem('messageLifetime', messageLifetime);
+    }
+    
+    // Загружаем настройки при загрузке страницы
+    loadSettings();
+    
+    // Обработчики событий для настроек
+    autoDeleteToggle.addEventListener('change', () => {
+        autoDeleteEnabled = autoDeleteToggle.checked;
+        saveSettings();
+        
+        // Обновляем состояние существующих сообщений
+        updateMessageDeletionState();
+    });
+    
+    deleteTimeSelect.addEventListener('change', () => {
+        messageLifetime = parseInt(deleteTimeSelect.value);
+        saveSettings();
+        
+        // Обновляем таймеры существующих сообщений
+        updateMessageDeletionTimers();
+    });
+    
+    // Обновление состояния автоудаления всех сообщений
+    function updateMessageDeletionState() {
+        const messages = document.querySelectorAll('.message');
+        
+        messages.forEach(message => {
+            const messageId = message.id;
+            const countdownElement = document.getElementById(`countdown-${messageId}`);
+            
+            if (countdownElement) {
+                if (autoDeleteEnabled) {
+                    countdownElement.style.display = 'block';
+                    // Перезапускаем таймер, если он был отключен
+                    if (!messageTimers[messageId]) {
+                        setupMessageDeletion(messageId);
+                    }
+                } else {
+                    countdownElement.style.display = 'none';
+                    // Отменяем существующий таймер
+                    if (messageTimers[messageId]) {
+                        clearTimeout(messageTimers[messageId].deletionTimer);
+                        clearInterval(messageTimers[messageId].countdownInterval);
+                        delete messageTimers[messageId];
+                    }
+                }
+            }
+        });
+    }
+    
+    // Обновление таймеров автоудаления всех сообщений
+    function updateMessageDeletionTimers() {
+        Object.keys(messageTimers).forEach(messageId => {
+            // Отменяем существующий таймер
+            clearTimeout(messageTimers[messageId].deletionTimer);
+            clearInterval(messageTimers[messageId].countdownInterval);
+            
+            // Если автоудаление включено, создаем новый таймер
+            if (autoDeleteEnabled) {
+                setupMessageDeletion(messageId);
+            } else {
+                delete messageTimers[messageId];
+            }
+        });
+    }
 
     // Функция подключения к серверу
     function connectToServer() {
@@ -41,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем информацию о сервере
             const serverName = window.location.hostname.split('.')[0];
-            connectedServer.textContent = serverName === 'localhost' ? 'облачный сервер' : serverName;
+            connectedServer.textContent = serverName === 'localhost' ? 'облачному серверу' : serverName;
             
             // Обработчики событий Socket.io
             setupSocketListeners();
@@ -161,15 +247,31 @@ document.addEventListener('DOMContentLoaded', () => {
         
         messageElement.innerHTML = `
             <div class="message-user">${message.user}</div>
-            <div class="message-text">${escapeHtml(message.text)}</div>
+            <div class="message-text">${formatMessage(message.text)}</div>
             <div class="message-time">${time}</div>
-            <div class="message-countdown" id="countdown-${messageId}">Исчезнет через 30с</div>
+            <div class="message-countdown" id="countdown-${messageId}" ${!autoDeleteEnabled ? 'style="display:none"' : ''}>
+                Исчезнет через ${Math.floor(messageLifetime / 1000)}с
+            </div>
         `;
         
         messagesContainer.appendChild(messageElement);
         
-        // Запускаем таймер для удаления сообщения
-        setupMessageDeletion(messageId);
+        // Запускаем таймер для удаления сообщения, если включено автоудаление
+        if (autoDeleteEnabled) {
+            setupMessageDeletion(messageId);
+        }
+    }
+    
+    // Форматирование сообщения (обработка ссылок)
+    function formatMessage(text) {
+        // Экранируем HTML
+        text = escapeHtml(text);
+        
+        // Находим и заменяем ссылки
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.replace(urlRegex, function(url) {
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+        });
     }
 
     // Настройка автоудаления сообщения
@@ -179,7 +281,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (!messageElement) return;
         
-        let timeLeft = MESSAGE_LIFETIME / 1000; // в секундах
+        let timeLeft = messageLifetime / 1000; // в секундах
+        
+        // Отменяем существующие таймеры, если они есть
+        if (messageTimers[messageId]) {
+            clearTimeout(messageTimers[messageId].deletionTimer);
+            clearInterval(messageTimers[messageId].countdownInterval);
+        }
         
         // Обновляем обратный отсчет каждую секунду
         const countdownInterval = setInterval(() => {
@@ -211,7 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Очищаем ссылку на таймер
             delete messageTimers[messageId];
-        }, MESSAGE_LIFETIME);
+        }, messageLifetime);
         
         // Сохраняем таймер для потенциальной очистки
         messageTimers[messageId] = {
@@ -231,8 +339,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         messagesContainer.appendChild(messageElement);
         
-        // Запускаем таймер для удаления системного сообщения
-        setupMessageDeletion(messageId);
+        // Запускаем таймер для удаления системного сообщения, если включено автоудаление
+        if (autoDeleteEnabled) {
+            setupMessageDeletion(messageId);
+        }
     }
 
     // Обновление списка пользователей
@@ -261,6 +371,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // Функция для обновления индикатора статуса соединения
+    function updateConnectionStatus(status) {
+        const statusIndicator = document.getElementById('status-indicator');
+        
+        if (!statusIndicator) return;
+        
+        // Удаляем все классы статуса
+        statusIndicator.classList.remove('online', 'offline', 'connecting');
+        
+        // Добавляем нужный класс
+        statusIndicator.classList.add(status);
     }
 
     // Очистка всех таймеров при закрытии страницы
@@ -311,20 +434,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        socket.emit('send-message', { text });
+        // Отправляем сообщение с текущими настройками автоудаления
+        socket.emit('send-message', { 
+            text, 
+            autoDelete: autoDeleteEnabled,
+            lifetime: messageLifetime
+        });
+        
         messageInput.value = '';
-    }
-
-    // Функция для обновления индикатора статуса соединения
-    function updateConnectionStatus(status) {
-        const statusIndicator = document.getElementById('status-indicator');
-        
-        if (!statusIndicator) return;
-        
-        // Удаляем все классы статуса
-        statusIndicator.classList.remove('online', 'offline', 'connecting');
-        
-        // Добавляем нужный класс
-        statusIndicator.classList.add(status);
     }
 }); 
