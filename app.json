@@ -1,0 +1,17 @@
+{
+  "name": "Jopa Messenger",
+  "description": "Онлайн-мессенджер с быстрым обменом сообщениями и автоудалением",
+  "repository": "https://github.com/yourusername/jopa-messenger",
+  "keywords": ["node", "express", "socket.io", "messenger", "chat"],
+  "env": {
+    "NODE_ENV": {
+      "description": "Environment setting",
+      "value": "production"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+} 
