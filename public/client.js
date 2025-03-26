@@ -316,8 +316,56 @@ document.addEventListener('DOMContentLoaded', () => {
             updateConnectionStatus('online');
         });
         
+        // Обработчик результата регистрации
+        socket.on('register_response', (response) => {
+            console.log('Получен ответ на регистрацию:', response);
+            
+            if (response.success) {
+                // Регистрация успешна
+                console.log('Регистрация успешна:', response.message);
+                
+                // Сохраняем данные пользователя
+                isLoggedIn = true;
+                username = registerUsername.value.trim();
+                window.username = username;
+                displayName = registerDisplayName.value.trim();
+                window.displayName = displayName;
+                
+                // Обновляем глобальную переменную socket
+                window.socket = socket;
+                
+                // Сохраняем учетные данные, если выбрано "Запомнить меня"
+                if (rememberMe.checked) {
+                    saveCredentials(username, registerPassword.value, displayName);
+                }
+                
+                // Если получен аватар, сохраняем его
+                if (response.avatarUrl) {
+                    currentAvatar = response.avatarUrl;
+                    localStorage.setItem('user_avatar', currentAvatar);
+                    
+                    // Обновляем аватар в настройках, если элемент существует
+                    const currentUserAvatar = document.getElementById('current-user-avatar');
+                    if (currentUserAvatar) {
+                        currentUserAvatar.src = currentAvatar;
+                    }
+                }
+                
+                // Переключаемся на форму авторизации через 2 секунды
+                setTimeout(() => {
+                    document.getElementById('login-tab').click();
+                    console.log('Переход на вкладку авторизации');
+                }, 2000);
+            } else {
+                // Ошибка регистрации
+                console.error('Ошибка регистрации:', response.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка регистрации: ${response.message}</span>`;
+            }
+        });
+        
         // Обработчик результата аутентификации
-        socket.on('auth_result', (result) => {
+        socket.on('authenticate_response', (result) => {
             console.log('Получен результат аутентификации:', result);
             
             if (result.success) {
@@ -333,8 +381,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // Если получен аватар, сохраняем его
-                if (result.avatar) {
-                    currentAvatar = result.avatar;
+                if (result.avatarUrl) {
+                    currentAvatar = result.avatarUrl;
                     localStorage.setItem('user_avatar', currentAvatar);
                     
                     // Обновляем аватар в настройках, если элемент существует
@@ -356,44 +404,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Показываем сообщение об ошибке
                 showMessage(result.message || 'Ошибка аутентификации', 'error');
-            }
-        });
-        
-        // Регистрация
-        socket.on('registration_result', (result) => {
-            if (result.success) {
-                // Регистрация успешна
-                console.log('Регистрация успешна:', result.message);
-                
-                // Сохраняем данные пользователя
-                isLoggedIn = true;
-                username = registerUsername.value.trim();
-                window.username = username;
-                displayName = registerDisplayName.value.trim();
-                window.displayName = displayName;
-                
-                // Обновляем глобальную переменную socket
-                window.socket = socket;
-                
-                // Сохраняем учетные данные, если выбрано "Запомнить меня"
-                if (rememberMe.checked) {
-                    saveCredentials(username, registerPassword.value, displayName);
-                }
-                
-                // Переключаемся на экран чата
-                loginScreen.style.display = 'none';
-                chatScreen.style.display = 'flex';
-                
-                // Инициализируем UI, обязательно делаем это только после успешной регистрации
-                initializeUI();
-                
-                // Загружаем настройки
-                loadSettings();
-            } else {
-                // Ошибка регистрации
-                console.error('Ошибка регистрации:', result.message);
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Ошибка регистрации: ${result.message}</span>`;
             }
         });
         
@@ -592,84 +602,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             scrollToBottom();
-        });
-
-        // Добавляем обработчики для регистрации и авторизации
-        socket.on('register_response', function(response) {
-            console.log('Получен ответ на регистрацию:', response);
-            
-            const messageElement = document.getElementById('register-message');
-            if (messageElement) {
-                messageElement.textContent = response.message;
-                
-                if (response.success) {
-                    messageElement.classList.remove('error');
-                    messageElement.classList.add('success');
-                    
-                    // Сохраняем URL аватара, если он есть
-                    if (response.avatarUrl) {
-                        localStorage.setItem('user_avatar', response.avatarUrl);
-                        console.log('Аватар сохранен в localStorage:', response.avatarUrl);
-                    }
-                    
-                    // Переключаемся на форму авторизации через 2 секунды
-                    setTimeout(() => {
-                        document.getElementById('login-tab').click();
-                        console.log('Переход на вкладку авторизации');
-                    }, 2000);
-                } else {
-                    messageElement.classList.remove('success');
-                    messageElement.classList.add('error');
-                }
-            }
-        });
-
-        socket.on('authenticate_response', function(response) {
-            console.log('Получен ответ на авторизацию:', response);
-            
-            const messageElement = document.getElementById('login-message');
-            if (messageElement) {
-                messageElement.textContent = response.message;
-                
-                if (response.success) {
-                    messageElement.classList.remove('error');
-                    messageElement.classList.add('success');
-                    
-                    // Сохраняем токен и данные пользователя
-                    localStorage.setItem('token', response.token);
-                    localStorage.setItem('username', response.username);
-                    if (response.displayName) {
-                        localStorage.setItem('displayName', response.displayName);
-                    }
-                    if (response.avatarUrl) {
-                        localStorage.setItem('user_avatar', response.avatarUrl);
-                        console.log('Аватар сохранен в localStorage:', response.avatarUrl);
-                    }
-                    
-                    // Показываем интерфейс чата
-                    document.getElementById('login-container').style.display = 'none';
-                    document.getElementById('chat-container').style.display = 'flex';
-                    
-                    // Запрашиваем комнаты, чтобы заполнить список
-                    socket.emit('get_rooms');
-                    
-                    // Устанавливаем имя пользователя в интерфейсе
-                    const userDisplayName = document.getElementById('user-display-name');
-                    if (userDisplayName) {
-                        userDisplayName.textContent = response.displayName || response.username;
-                    }
-                    
-                    // Устанавливаем аватар пользователя
-                    const userAvatar = document.getElementById('user-avatar');
-                    if (userAvatar && response.avatarUrl) {
-                        userAvatar.src = response.avatarUrl;
-                        userAvatar.style.display = 'block';
-                    }
-                } else {
-                    messageElement.classList.remove('success');
-                    messageElement.classList.add('error');
-                }
-            }
         });
     }
 

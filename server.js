@@ -635,132 +635,109 @@ io.on('connection', (socket) => {
   // Обработка регистрации пользователя
   socket.on('register', (data) => {
     console.log('Получен запрос на регистрацию:', { 
-      username: data.username, 
-      displayName: data.displayName,
-      hasPassword: !!data.password,
-      hasAvatar: !!data.avatar
+        username: data.username, 
+        displayName: data.displayName,
+        hasPassword: !!data.password,
+        hasAvatar: !!data.avatar,
+        disableAvatars: !!data.disableAvatars
     });
     
-    const { username, password, displayName, avatar } = data;
+    const { username, password, displayName, avatar, disableAvatars } = data;
     
     // Базовая валидация
     if (!username || !password) {
-      socket.emit('register_response', { 
-        success: false, 
-        message: 'Необходимо указать имя пользователя и пароль' 
-      });
-      return;
+        socket.emit('register_response', { 
+            success: false, 
+            message: 'Необходимо указать имя пользователя и пароль' 
+        });
+        return;
     }
     
     // Проверяем, существует ли уже такой пользователь
     if (userDatabase[username]) {
-      socket.emit('register_response', { 
-        success: false, 
-        message: 'Пользователь с таким именем уже существует' 
-      });
-      return;
+        socket.emit('register_response', { 
+            success: false, 
+            message: 'Пользователь с таким именем уже существует' 
+        });
+        return;
     }
     
-    // Хешируем пароль с использованием более безопасного метода с солью
-    const { salt, hash } = hashPassword(password);
-    
-    // Создаем запись о пользователе
-    userDatabase[username] = {
-      displayName: displayName || username,
-      salt,
-      hash,
-      created: Date.now()
-    };
-    
-    console.log(`Пользователь ${username} успешно добавлен в базу данных`);
-    
-    // Сохраняем аватар, если он был предоставлен
-    if (avatar) {
-      try {
-        console.log(`Начинаем обработку аватара для пользователя ${username}`);
-        // Проверяем существование директории
-        if (!fs.existsSync(AVATARS_DIR)) {
-          fs.mkdirSync(AVATARS_DIR, { recursive: true });
-          console.log(`Создана директория для аватаров: ${AVATARS_DIR}`);
+    try {
+        // Хешируем пароль с использованием более безопасного метода с солью
+        const { salt, hash } = hashPassword(password);
+        
+        // Создаем запись о пользователе
+        userDatabase[username] = {
+            displayName: displayName || username,
+            salt,
+            hash,
+            created: Date.now(),
+            disableAvatars: !!disableAvatars
+        };
+        
+        console.log(`Пользователь ${username} успешно добавлен в базу данных`);
+        
+        // Обрабатываем аватар, если он предоставлен и аватары не отключены
+        if (avatar && !disableAvatars) {
+            try {
+                console.log(`Начинаем обработку аватара для пользователя ${username}`);
+                
+                // Проверяем существование директории
+                if (!fs.existsSync(AVATARS_DIR)) {
+                    fs.mkdirSync(AVATARS_DIR, { recursive: true });
+                    console.log(`Создана директория для аватаров: ${AVATARS_DIR}`);
+                }
+                
+                // Проверяем формат (должен быть base64 изображения)
+                if (!avatar.startsWith('data:image/')) {
+                    throw new Error('Неверный формат изображения аватара');
+                }
+                
+                // Конвертируем base64 в бинарные данные
+                const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+                const buffer = Buffer.from(base64Data, 'base64');
+                
+                // Генерируем уникальное имя файла
+                const filename = `${username}_${Date.now()}.jpg`;
+                const avatarPath = path.join(AVATARS_DIR, filename);
+                
+                // Сохраняем файл синхронно
+                fs.writeFileSync(avatarPath, buffer);
+                console.log(`Аватар для ${username} успешно сохранен: ${avatarPath}`);
+                
+                // Сохраняем путь к аватару
+                userAvatars[username] = `/uploads/avatars/${filename}`;
+            } catch (error) {
+                console.error(`Ошибка при обработке аватара для ${username}:`, error);
+                // В случае ошибки используем аватар по умолчанию
+                userAvatars[username] = '/uploads/default-avatar.png';
+            }
+        } else {
+            // Если аватары отключены или аватар не предоставлен
+            userAvatars[username] = disableAvatars ? null : '/uploads/default-avatar.png';
         }
         
-        // Проверяем формат (должен быть base64 изображения)
-        if (!avatar.startsWith('data:image/')) {
-          socket.emit('register_response', { 
+        // Синхронизируем с userManager
+        userManager.userDatabase = userDatabase;
+        userManager.userAvatars = userAvatars;
+        
+        // Сохраняем все данные
+        saveAllData();
+        
+        // Отправляем успешный ответ
+        socket.emit('register_response', { 
+            success: true, 
+            message: 'Регистрация успешна! Теперь вы можете войти.',
+            avatarUrl: userAvatars[username]
+        });
+        
+        console.log(`Регистрация пользователя ${username} завершена успешно`);
+    } catch (error) {
+        console.error('Ошибка при регистрации пользователя:', error);
+        socket.emit('register_response', { 
             success: false, 
-            message: 'Неверный формат изображения аватара' 
-          });
-          return;
-        }
-        
-      // Конвертируем base64 в бинарные данные
-      const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      
-      // Генерируем уникальное имя файла
-      const filename = `${username}_${Date.now()}.jpg`;
-      const avatarPath = path.join(AVATARS_DIR, filename);
-      
-        // Сохраняем файл синхронно для гарантии сохранения перед отправкой ответа
-        fs.writeFileSync(avatarPath, buffer);
-        console.log(`Аватар для ${username} успешно сохранен: ${avatarPath}`);
-          
-          // Сохраняем путь к аватару (относительный путь для клиента)
-          userAvatars[username] = `/uploads/avatars/${filename}`;
-        
-        // Синхронизируем с userManager
-        userManager.userDatabase = userDatabase;
-        userManager.userAvatars = userAvatars;
-        console.log('Данные синхронизированы с userManager');
-        
-        // Перед вызовом saveAllData:
-        console.log('Сохраняем все данные...');
-        saveAllData();
-        console.log('Данные успешно сохранены');
-        
-        // Отправляем успешный ответ
-        socket.emit('register_response', { 
-          success: true, 
-          message: 'Регистрация успешна! Теперь вы можете войти.',
-          avatarUrl: userAvatars[username]
+            message: 'Ошибка при регистрации: ' + error.message 
         });
-      } catch (error) {
-        console.error(`ОШИБКА при обработке аватара для ${username}:`, error);
-        
-        // Если аватар не предоставлен или возникла ошибка, используем аватар по умолчанию
-        userAvatars[username] = '/uploads/default-avatar.png';
-        
-        // Синхронизируем с userManager
-        userManager.userDatabase = userDatabase;
-        userManager.userAvatars = userAvatars;
-        
-        // Сохраняем учетные данные в файл
-        saveAllData();
-        
-        // Отправляем успешный ответ
-        socket.emit('register_response', { 
-          success: true, 
-          message: 'Регистрация успешна! Теперь вы можете войти. Аватар установлен по умолчанию.',
-          avatarUrl: userAvatars[username]
-        });
-      }
-    } else {
-      // Если аватар не предоставлен, используем аватар по умолчанию
-      userAvatars[username] = '/uploads/default-avatar.png';
-      
-      // Синхронизируем с userManager
-      userManager.userDatabase = userDatabase;
-      userManager.userAvatars = userAvatars;
-    
-    // Сохраняем учетные данные в файл
-      saveAllData();
-    
-    // Отправляем успешный ответ
-    socket.emit('register_response', { 
-      success: true, 
-      message: 'Регистрация успешна! Теперь вы можете войти.',
-      avatarUrl: userAvatars[username]
-    });
     }
   });
   
