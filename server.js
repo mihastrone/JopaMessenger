@@ -23,6 +23,9 @@ const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 // Директория для хранения пользовательских данных
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const BANNED_USERS_FILE = path.join(DATA_DIR, 'banned_users.json');
+const ADMINS_FILE = path.join(DATA_DIR, 'admins.json');
+const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
 
 // Создаем нужные директории с проверкой ошибок
 try {
@@ -58,6 +61,77 @@ try {
   userDatabase = {};
 }
 
+// Загрузка забаненных пользователей из файла
+let bannedUsers = new Map();
+try {
+  if (fs.existsSync(BANNED_USERS_FILE)) {
+    const bannedData = fs.readFileSync(BANNED_USERS_FILE, 'utf8');
+    const bannedArray = JSON.parse(bannedData);
+    // Преобразуем массив обратно в Map
+    bannedUsers = new Map(bannedArray);
+    console.log(`Загружено ${bannedUsers.size} забаненных пользователей`);
+  } else {
+    // Создаем пустой файл забаненных пользователей
+    fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify([]), 'utf8');
+    console.log('Создан новый файл забаненных пользователей');
+  }
+} catch (error) {
+  console.error(`Ошибка при работе с файлом забаненных пользователей: ${error.message}`);
+  // Продолжаем с пустым списком забаненных пользователей
+  bannedUsers = new Map();
+}
+
+// Загрузка списка администраторов из файла
+let admins = new Set();
+try {
+  if (fs.existsSync(ADMINS_FILE)) {
+    const adminsData = fs.readFileSync(ADMINS_FILE, 'utf8');
+    const adminsArray = JSON.parse(adminsData);
+    // Преобразуем массив обратно в Set
+    admins = new Set(adminsArray);
+    console.log(`Загружено ${admins.size} администраторов`);
+  } else {
+    // Создаем пустой файл администраторов
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify([]), 'utf8');
+    console.log('Создан новый файл администраторов');
+  }
+} catch (error) {
+  console.error(`Ошибка при работе с файлом администраторов: ${error.message}`);
+  // Продолжаем с пустым списком администраторов
+  admins = new Set();
+}
+
+// Загрузка комнат из файла
+try {
+  if (fs.existsSync(ROOMS_FILE)) {
+    const roomsData = fs.readFileSync(ROOMS_FILE, 'utf8');
+    const roomsArray = JSON.parse(roomsData);
+    // Преобразуем массив обратно в структуру комнат
+    rooms = new Map();
+    roomsArray.forEach(roomData => {
+      const room = new Room(roomData.id, roomData.name, roomData.creator);
+      room.members = new Set(roomData.members);
+      room.autoDeleteEnabled = roomData.autoDeleteEnabled;
+      room.messageLifetime = roomData.messageLifetime;
+      
+      // Восстанавливаем сообщения комнаты
+      room.messages = roomData.messages || [];
+      
+      // Добавляем комнату в Map
+      rooms.set(roomData.id, room);
+    });
+    console.log(`Загружено ${rooms.size} комнат`);
+  } else {
+    // Создаем пустой файл комнат
+    fs.writeFileSync(ROOMS_FILE, JSON.stringify([]), 'utf8');
+    console.log('Создан новый файл комнат');
+  }
+} catch (error) {
+  console.error(`Ошибка при работе с файлом комнат: ${error.message}`);
+  // Продолжаем с пустым списком комнат
+  rooms = new Map();
+}
+
 // Функция сохранения пользователей в файл с дополнительной обработкой ошибок для Railway
 function saveUsers() {
   try {
@@ -67,6 +141,63 @@ function saveUsers() {
     console.error(`Ошибка при сохранении пользователей: ${error.message}`);
     // В случае ошибки записи на Railway, можно добавить механизм резервного копирования
   }
+}
+
+// Функция сохранения забаненных пользователей в файл
+function saveBannedUsers() {
+  try {
+    // Преобразуем Map в массив пар [ключ, значение] для сохранения
+    const bannedArray = Array.from(bannedUsers.entries());
+    fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify(bannedArray), 'utf8');
+    console.log('Данные забаненных пользователей сохранены');
+  } catch (error) {
+    console.error(`Ошибка при сохранении забаненных пользователей: ${error.message}`);
+  }
+}
+
+// Функция сохранения администраторов в файл
+function saveAdmins() {
+  try {
+    // Преобразуем Set в массив для сохранения
+    const adminsArray = Array.from(admins);
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify(adminsArray), 'utf8');
+    console.log('Данные администраторов сохранены');
+  } catch (error) {
+    console.error(`Ошибка при сохранении администраторов: ${error.message}`);
+  }
+}
+
+// Функция сохранения комнат в файл
+function saveRooms() {
+  try {
+    // Преобразуем Map в массив объектов для сохранения
+    const roomsArray = Array.from(rooms.values()).map(room => {
+      // Возвращаем сериализуемый объект комнаты
+      return {
+        id: room.id,
+        name: room.name,
+        creator: room.creator,
+        members: Array.from(room.members),
+        autoDeleteEnabled: room.autoDeleteEnabled,
+        messageLifetime: room.messageLifetime,
+        messages: room.messages // Сохраняем историю сообщений комнаты
+      };
+    });
+    
+    fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsArray), 'utf8');
+    console.log('Данные комнат сохранены');
+  } catch (error) {
+    console.error(`Ошибка при сохранении комнат: ${error.message}`);
+  }
+}
+
+// Функция для сохранения всех данных
+function saveAllData() {
+  saveUsers();
+  saveBannedUsers();
+  saveAdmins();
+  saveRooms();
+  console.log('Все данные успешно сохранены');
 }
 
 // Функция для хеширования пароля с солью
@@ -196,8 +327,6 @@ const users = {}; // Хранит socketId -> username
 const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
 const rooms = new Map(); // Хранение приватных комнат
-const bannedUsers = new Map(); // Для хранения забаненных пользователей
-const admins = new Set(); // Для хранения администраторов
 
 // Класс для сообщений с расширенными атрибутами
 class Message {
@@ -335,6 +464,9 @@ function banUser(username, duration) {
     delete activeUsers[username];
   }
   
+  // Сохраняем изменения в файл
+  saveBannedUsers();
+  
   console.log(`Пользователь ${username} забанен на ${duration === -1 ? 'навсегда' : `${duration}мс`}`);
   return true;
 }
@@ -347,6 +479,10 @@ function unbanUser(username) {
   
   // Удаляем информацию о бане
   bannedUsers.delete(username);
+  
+  // Сохраняем изменения в файл
+  saveBannedUsers();
+  
   console.log(`Пользователь ${username} разбанен`);
   return true;
 }
@@ -536,6 +672,9 @@ io.on('connection', (socket) => {
     // Добавляем пользователя в список администраторов
     admins.add(username);
     
+    // Сохраняем изменения в файл
+    saveAdmins();
+    
     console.log(`Пользователь ${username} авторизован как администратор`);
     
     // Отправляем обновленные списки забаненных пользователей и комнат
@@ -672,6 +811,9 @@ io.on('connection', (socket) => {
     // Обновляем список приватных комнат для всех админов
     updateAdminsWithRoomsList();
     
+    // Сохраняем комнаты в файл
+    saveRooms();
+    
     console.log(`Создана новая комната: ${roomName} (ID: ${roomId})`);
   });
 
@@ -754,7 +896,7 @@ io.on('connection', (socket) => {
     }
 
     // Проверяем, является ли пользователь создателем комнаты
-    if (room.creator !== users[socket.id]) {
+    if (room.creator !== users[socket.id] && !admins.has(users[socket.id])) {
       socket.emit('error', { message: 'У вас нет прав на удаление этой комнаты' });
       return;
     }
@@ -764,6 +906,9 @@ io.on('connection', (socket) => {
     
     // Удаляем комнату
     rooms.delete(roomId);
+    
+    // Сохраняем изменения в файл
+    saveRooms();
     
     console.log(`Комната ${room.name} удалена пользователем ${users[socket.id]}`);
   });
@@ -957,6 +1102,10 @@ io.on('connection', (socket) => {
   process.on(signal, () => {
     console.log(`Получен сигнал ${signal}, завершение работы...`);
     
+    // Сохраняем все данные перед завершением
+    console.log('Сохранение данных перед выключением...');
+    saveAllData();
+    
     // Очищаем все таймеры удаления сообщений
     Object.values(messageTimers).forEach(timer => clearTimeout(timer));
     
@@ -985,7 +1134,7 @@ server.listen(PORT, '0.0.0.0', () => {
   setInterval(cleanupOldImages, CLEANUP_INTERVAL);
   
   // Периодическое сохранение пользовательских данных
-  setInterval(saveUsers, 1000 * 60 * 10); // Каждые 10 минут
+  setInterval(saveAllData, 1000 * 60 * 10); // Каждые 10 минут
 });
 
 // Расчет размера данных в base64
@@ -1088,4 +1237,229 @@ function checkImageInUse(imagePath) {
   }
   
   return false;
+}
+
+// Функция для добавления администратора напрямую из консоли
+// Для использования: node -e "require('./server.js').addAdmin('имя_пользователя')"
+function addAdmin(username) {
+  if (!username) {
+    console.error('Необходимо указать имя пользователя');
+    return false;
+  }
+
+  // Проверяем, существует ли пользователь
+  if (!userDatabase[username]) {
+    console.error(`Пользователь ${username} не найден в базе данных`);
+    return false;
+  }
+
+  // Добавляем пользователя в список администраторов
+  admins.add(username);
+  
+  // Сохраняем изменения в файл
+  saveAdmins();
+  
+  console.log(`Пользователь ${username} успешно добавлен в список администраторов`);
+  return true;
+}
+
+// Экспортируем функцию для возможности вызова из консоли
+module.exports = { addAdmin };
+
+// Класс для управления пользователями и их данными
+class UserManager {
+  constructor() {
+    this.loadUsers();
+    this.loadBannedUsers();
+    this.loadAdmins();
+    this.loadRooms();
+    
+    // Настраиваем автоматическое сохранение данных
+    this.setupAutoSave();
+  }
+  
+  // Загрузка пользователей из файла
+  loadUsers() {
+    try {
+      if (fs.existsSync(USERS_FILE)) {
+        const userData = fs.readFileSync(USERS_FILE, 'utf8');
+        userDatabase = JSON.parse(userData);
+        console.log(`Загружено ${Object.keys(userDatabase).length} пользователей`);
+      } else {
+        // Создаем пустой файл пользователей
+        fs.writeFileSync(USERS_FILE, JSON.stringify({}), 'utf8');
+        console.log('Создан новый файл пользователей');
+      }
+    } catch (error) {
+      console.error(`Ошибка при загрузке пользователей: ${error.message}`);
+      // Продолжаем с пустой базой пользователей
+      userDatabase = {};
+    }
+  }
+  
+  // Загрузка забаненных пользователей из файла
+  loadBannedUsers() {
+    try {
+      if (fs.existsSync(BANNED_USERS_FILE)) {
+        const bannedData = fs.readFileSync(BANNED_USERS_FILE, 'utf8');
+        const bannedArray = JSON.parse(bannedData);
+        
+        // Преобразуем массив обратно в Map
+        bannedUsers = new Map(bannedArray);
+        console.log(`Загружено ${bannedUsers.size} забаненных пользователей`);
+      } else {
+        // Создаем пустой файл забаненных пользователей
+        fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify([]), 'utf8');
+        console.log('Создан новый файл забаненных пользователей');
+      }
+    } catch (error) {
+      console.error(`Ошибка при загрузке забаненных пользователей: ${error.message}`);
+      // Продолжаем с пустым списком забаненных пользователей
+      bannedUsers = new Map();
+    }
+  }
+  
+  // Загрузка администраторов из файла
+  loadAdmins() {
+    try {
+      if (fs.existsSync(ADMINS_FILE)) {
+        const adminsData = fs.readFileSync(ADMINS_FILE, 'utf8');
+        const adminsArray = JSON.parse(adminsData);
+        
+        // Преобразуем массив обратно в Set
+        admins = new Set(adminsArray);
+        console.log(`Загружено ${admins.size} администраторов`);
+      } else {
+        // Создаем пустой файл администраторов
+        fs.writeFileSync(ADMINS_FILE, JSON.stringify([]), 'utf8');
+        console.log('Создан новый файл администраторов');
+      }
+    } catch (error) {
+      console.error(`Ошибка при загрузке администраторов: ${error.message}`);
+      // Продолжаем с пустым списком администраторов
+      admins = new Set();
+    }
+  }
+  
+  // Загрузка комнат из файла
+  loadRooms() {
+    try {
+      if (fs.existsSync(ROOMS_FILE)) {
+        const roomsData = fs.readFileSync(ROOMS_FILE, 'utf8');
+        const roomsArray = JSON.parse(roomsData);
+        
+        // Преобразуем массив обратно в Map
+        rooms = new Map();
+        roomsArray.forEach(roomData => {
+          const room = new Room(roomData.id, roomData.name, roomData.creator);
+          room.members = new Set(roomData.members);
+          room.autoDeleteEnabled = roomData.autoDeleteEnabled;
+          room.messageLifetime = roomData.messageLifetime;
+          room.messages = roomData.messages || [];
+          rooms.set(roomData.id, room);
+        });
+        
+        console.log(`Загружено ${rooms.size} комнат`);
+      } else {
+        // Создаем пустой файл комнат
+        fs.writeFileSync(ROOMS_FILE, JSON.stringify([]), 'utf8');
+        console.log('Создан новый файл комнат');
+      }
+    } catch (error) {
+      console.error(`Ошибка при загрузке комнат: ${error.message}`);
+      // Продолжаем с пустым списком комнат
+      rooms = new Map();
+    }
+  }
+  
+  // Настройка автоматического сохранения данных
+  setupAutoSave() {
+    // Сохраняем данные каждые 5 минут
+    setInterval(() => {
+      this.saveAllData();
+    }, 5 * 60 * 1000);
+    
+    // Сохраняем данные при завершении работы сервера
+    ['SIGTERM', 'SIGINT'].forEach(signal => {
+      process.on(signal, () => {
+        console.log(`Получен сигнал ${signal}, сохраняем данные...`);
+        this.saveAllData();
+      });
+    });
+  }
+  
+  // Сохранение всех данных
+  saveAllData() {
+    this.saveUsers();
+    this.saveBannedUsers();
+    this.saveAdmins();
+    this.saveRooms();
+    console.log('Все данные успешно сохранены');
+  }
+  
+  // Сохранение пользователей в файл
+  saveUsers() {
+    try {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(userDatabase), 'utf8');
+      console.log('Данные пользователей сохранены');
+    } catch (error) {
+      console.error(`Ошибка при сохранении пользователей: ${error.message}`);
+    }
+  }
+  
+  // Сохранение забаненных пользователей в файл
+  saveBannedUsers() {
+    try {
+      // Преобразуем Map в массив пар [ключ, значение] для сохранения
+      const bannedArray = Array.from(bannedUsers.entries());
+      fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify(bannedArray), 'utf8');
+      console.log('Данные забаненных пользователей сохранены');
+    } catch (error) {
+      console.error(`Ошибка при сохранении забаненных пользователей: ${error.message}`);
+    }
+  }
+  
+  // Сохранение администраторов в файл
+  saveAdmins() {
+    try {
+      // Преобразуем Set в массив для сохранения
+      const adminsArray = Array.from(admins);
+      fs.writeFileSync(ADMINS_FILE, JSON.stringify(adminsArray), 'utf8');
+      console.log('Данные администраторов сохранены');
+    } catch (error) {
+      console.error(`Ошибка при сохранении администраторов: ${error.message}`);
+    }
+  }
+  
+  // Сохранение комнат в файл
+  saveRooms() {
+    try {
+      // Преобразуем Map в массив объектов для сохранения
+      const roomsArray = Array.from(rooms.values()).map(room => {
+        // Возвращаем сериализуемый объект комнаты
+        return {
+          id: room.id,
+          name: room.name,
+          creator: room.creator,
+          members: Array.from(room.members),
+          autoDeleteEnabled: room.autoDeleteEnabled,
+          messageLifetime: room.messageLifetime,
+          messages: room.messages // Сохраняем историю сообщений комнаты
+        };
+      });
+      
+      fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsArray), 'utf8');
+      console.log('Данные комнат сохранены');
+    } catch (error) {
+      console.error(`Ошибка при сохранении комнат: ${error.message}`);
+    }
+  }
+}
+
+// Создаем экземпляр менеджера пользователей
+const userManager = new UserManager();
+
+// Обновляем определение функции saveAllData для использования userManager
+function saveAllData() {
+  userManager.saveAllData();
 } 

@@ -178,4 +178,33 @@
 
 .admin-login-button:hover {
     background-color: #ba4a00;
+}
+
+.message {
+    margin-bottom: 15px;
+    padding: 10px;
+    border-radius: 10px;
+    word-wrap: break-word;
+    max-width: 80%;
+    position: relative;
+    animation: fade-in 0.3s;
+}
+
+.message-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.username {
+    font-weight: bold;
+    color: #007bff;
+    margin-right: 5px;
+}
+
+.timestamp {
+    font-size: 0.85em;
+    color: #6c757d;
 } 

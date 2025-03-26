@@ -1111,7 +1111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.innerHTML = `
             <div class="message-header">
                 <span class="username">${escapeHtml(senderName)}</span>
-                <span class="timestamp">${new Date(message.timestamp || Date.now()).toLocaleTimeString()}</span>
+                <span class="timestamp">&nbsp;•&nbsp;${new Date(message.timestamp || Date.now()).toLocaleTimeString()}</span>
             </div>
             <div class="message-content">${formattedMessage}</div>
             ${imageHtml}
@@ -2460,7 +2460,7 @@ document.addEventListener('DOMContentLoaded', () => {
             messageElement.innerHTML = `
                 <div class="admin-message-header">
                     <span class="admin-message-username">${message.displayName || message.username}</span>
-                    <span class="admin-message-timestamp">${timestamp}</span>
+                    <span class="admin-message-timestamp">&nbsp;•&nbsp;${timestamp}</span>
                 </div>
                 <div class="admin-message-content">${formatMessage(message.text || '')}</div>
                 ${message.image ? `<div class="admin-message-image"><img src="${message.image}" alt="Изображение"></div>` : ''}
@@ -2569,7 +2569,9 @@ document.addEventListener('DOMContentLoaded', () => {
         adminSection.className = 'settings-section admin-section';
         adminSection.innerHTML = `
             <h3>Администрирование</h3>
-            <button id="admin-login-button" class="admin-login-button">Войти как администратор</button>
+            <button id="admin-login-button" class="admin-login-button">
+                <i class="fas fa-cog"></i> Войти как администратор
+            </button>
         `;
         
         // Добавляем секцию в контейнер настроек
@@ -2577,6 +2579,35 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Добавляем обработчик для кнопки
         document.getElementById('admin-login-button').addEventListener('click', loginAsAdmin);
+        
+        // Добавляем иконку шестеренки в навигационную панель
+        const navContainer = document.querySelector('.nav-container') || document.querySelector('header');
+        if (navContainer) {
+            const adminIcon = document.createElement('div');
+            adminIcon.className = 'admin-icon';
+            adminIcon.innerHTML = `<i class="fas fa-cog" title="Админ-панель"></i>`;
+            adminIcon.addEventListener('click', loginAsAdmin);
+            navContainer.appendChild(adminIcon);
+            
+            // Добавляем стиль для иконки
+            const style = document.createElement('style');
+            style.textContent = `
+                .admin-icon {
+                    cursor: pointer;
+                    margin-left: 15px;
+                    font-size: 1.2em;
+                    color: #555;
+                    transition: color 0.3s;
+                }
+                .admin-icon:hover {
+                    color: #007bff;
+                }
+                .admin-login-button i {
+                    margin-right: 5px;
+                }
+            `;
+            document.head.appendChild(style);
+        }
     }
     
     // Модифицируем функцию initializeUI для добавления кнопки админа
