@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
+const UserManager = require('./user_manager');
 
 // Порт берется из переменных окружения (Railway автоматически устанавливает PORT)
 const PORT = process.env.PORT || 3000;
