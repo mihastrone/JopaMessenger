@@ -949,12 +949,21 @@ io.on('connection', (socket) => {
             const imageData = message.image.split(';base64,').pop();
             const fileExtension = message.image.split(';')[0].split('/')[1];
             const fileName = `${Date.now()}_${Math.floor(Math.random() * 10000)}.${fileExtension}`;
-            const filePath = path.join(__dirname, 'uploads', fileName);
             
-            // Сохраняем изображение
+            // Используем UPLOADS_DIR вместо жестко заданного пути
+            const filePath = path.join(UPLOADS_DIR, fileName);
+            
+            // Проверяем существование директории и создаем её при необходимости
             try {
+                if (!fs.existsSync(UPLOADS_DIR)) {
+                    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+                    console.log(`Создана директория для загрузок: ${UPLOADS_DIR}`);
+                }
+                
+                // Сохраняем изображение
                 fs.writeFileSync(filePath, Buffer.from(imageData, 'base64'));
                 message.image = `/uploads/${fileName}`;
+                console.log(`Изображение успешно сохранено: ${filePath}`);
             } catch (error) {
                 console.error('Ошибка при сохранении изображения:', error);
                 message.image = null;
@@ -1128,6 +1137,19 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Сервер запущен на порту ${PORT}`);
   console.log(`Публичный URL: ${HOST_URL}`);
   console.log(`Время запуска: ${new Date().toISOString()}`);
+  console.log(`Директория для загрузок: ${UPLOADS_DIR}`);
+  console.log(`__dirname: ${__dirname}`);
+  console.log(`Полный путь: ${path.resolve(UPLOADS_DIR)}`);
+  
+  // Создаем директорию для загрузок если ее нет
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    try {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+      console.log(`Директория для загрузок создана: ${UPLOADS_DIR}`);
+    } catch (error) {
+      console.error(`Ошибка при создании директории для загрузок: ${error}`);
+    }
+  }
   
   // Запускаем периодическую очистку старых изображений (важно для Railway)
   setInterval(cleanupOldImages, CLEANUP_INTERVAL);
@@ -1150,6 +1172,12 @@ function calculateBase64Size(base64String) {
 // Функция для сохранения изображения, оптимизированная для Railway
 function saveImage(base64Data, messageId) {
   try {
+    // Проверяем существование директории и создаем её при необходимости
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+      console.log(`Создана директория для загрузок: ${UPLOADS_DIR}`);
+    }
+  
     // Генерируем уникальное имя файла
     const hash = crypto.createHash('md5').update(messageId.toString()).digest('hex');
     
@@ -1166,12 +1194,15 @@ function saveImage(base64Data, messageId) {
     const fileName = `${hash}-${messageId}.${fileExt}`;
     const filePath = path.join(UPLOADS_DIR, fileName);
     
+    console.log(`Сохранение изображения в файл: ${filePath}`);
+    
     // Конвертируем base64 в бинарные данные
     const base64Image = base64Data.split(';base64,').pop();
     const imageBuffer = Buffer.from(base64Image, 'base64');
     
     // Записываем файл на диск
     fs.writeFileSync(filePath, imageBuffer);
+    console.log(`Изображение успешно сохранено: ${filePath}`);
     
     // Возвращаем относительный путь для доступа через веб
     return `/uploads/${fileName}`;
@@ -1187,6 +1218,13 @@ function cleanupOldImages() {
   console.log('Запуск очистки старых изображений...');
   
   try {
+    // Проверяем существование директории
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      console.log(`Директория для загрузок не существует: ${UPLOADS_DIR}, создаём её`);
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+      return; // Нет смысла продолжать, если директория только что создана
+    }
+  
     // Получаем список всех файлов в директории
     const files = fs.readdirSync(UPLOADS_DIR);
     const now = Date.now();

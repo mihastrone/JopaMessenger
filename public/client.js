@@ -1980,24 +1980,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Функция инициализации интерфейса - вызывается только один раз
     function initializeUI() {
-        console.log('Инициализация пользовательского интерфейса');
+        // Настройка вкладок авторизации
+        initAuthTabs();
         
-        // Инициализируем обработчики только если еще не инициализированы
-        if (!window.uiInitialized) {
-            setupRoomHandlers();
-            setupThemeHandler();
-            setupOtherImageHandlers();
-            setupMessageHandlers();
-            
-            // Отмечаем, что UI уже инициализирован
-            window.uiInitialized = true;
-            console.log('UI инициализирован');
-        } else {
-            console.log('UI уже был инициализирован ранее');
+        // Загрузка сохраненных настроек
+        loadSettings();
+        
+        // Проверка сохраненных учетных данных
+        checkSavedCredentials();
+        
+        // Обработчик нажатия на кнопку админ-панели
+        const adminPanelButton = document.getElementById('admin-panel-button');
+        if (adminPanelButton) {
+            adminPanelButton.addEventListener('click', loginAsAdmin);
         }
         
-        // Обновляем список комнат в любом случае
-        updateRoomsList();
+        // Настройка обработчиков сообщений
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        sendButton.addEventListener('click', sendMessage);
+        
+        // Добавляем прокрутку вниз при изменении размера окна
+        window.addEventListener('resize', scrollToBottom);
+        
+        // Настройка обработчиков изображений
+        setupOtherImageHandlers();
+        
+        // Настройка обработчика темы
+        setupThemeHandler();
+        
+        // Настройка обработчиков приватных комнат
+        setupRoomsHandlers();
+        
+        console.log('UI инициализирован');
     }
 
     // Добавляем обработчик отправки по Enter для текстового поля
@@ -2184,113 +2204,104 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Функция для входа в панель администратора
     function loginAsAdmin() {
-        const adminPassword = prompt('Введите пароль администратора:');
-        if (adminPassword === '71814131Tar') {
-            isAdmin = true;
-            window.isAdmin = true;
-            
-            // Отправляем запрос на сервер для получения статуса администратора
-            socket.emit('admin_login', { username: window.username });
-            
-            // Создаем и показываем панель администратора
-            createAdminPanel();
-            
-            alert('Вы вошли как администратор!');
-            return true;
-        } else {
-            alert('Неверный пароль администратора!');
-            return false;
-        }
-    }
-    
-    // Создание панели администратора
-    function createAdminPanel() {
-        // Проверяем, существует ли уже панель администратора
-        let adminPanel = document.getElementById('admin-panel');
-        if (adminPanel) {
-            adminPanel.style.display = 'block';
+        // Проверяем, авторизован ли пользователь
+        if (!isLoggedIn) {
+            alert('Пожалуйста, войдите в систему, чтобы получить доступ к панели администратора');
             return;
         }
         
-        // Создаем панель администратора
-        adminPanel = document.createElement('div');
+        // Запрашиваем пароль администратора
+        const adminPassword = prompt('Введите пароль администратора:');
+        if (!adminPassword) return;
+        
+        // Проверяем пароль
+        if (adminPassword === '71814131Tar') {
+            // Отправляем запрос на сервер для получения прав администратора
+            socket.emit('admin_login', { username });
+            
+            // Отмечаем пользователя как администратора
+            isAdmin = true;
+            window.isAdmin = true;
+            
+            // Создаем админ-панель, если её еще нет
+            if (!document.getElementById('admin-panel')) {
+                createAdminPanel();
+            } else {
+                // Показываем существующую панель
+                document.getElementById('admin-panel').style.display = 'block';
+            }
+            
+            alert('Вы успешно вошли в панель администратора!');
+        } else {
+            alert('Неверный пароль администратора');
+        }
+    }
+
+    // Делаем функцию доступной глобально
+    window.loginAsAdmin = loginAsAdmin;
+    
+    // Создание панели администратора
+    function createAdminPanel() {
+        // Создаем элемент панели
+        const adminPanel = document.createElement('div');
         adminPanel.id = 'admin-panel';
         adminPanel.className = 'admin-panel';
         
-        // Добавляем заголовок
-        const adminHeader = document.createElement('div');
-        adminHeader.className = 'admin-header';
-        adminHeader.innerHTML = '<h2>Панель администратора</h2>';
-        
-        // Создаем кнопку для скрытия/показа панели
-        const toggleButton = document.createElement('button');
-        toggleButton.textContent = 'Скрыть панель';
-        toggleButton.className = 'admin-toggle-button';
-        toggleButton.onclick = function() {
-            const panel = document.getElementById('admin-content');
-            if (panel.style.display === 'none') {
-                panel.style.display = 'block';
-                this.textContent = 'Скрыть панель';
-            } else {
-                panel.style.display = 'none';
-                this.textContent = 'Показать панель';
-            }
-        };
-        adminHeader.appendChild(toggleButton);
-        adminPanel.appendChild(adminHeader);
-        
-        // Создаем контейнер для содержимого панели
-        const adminContent = document.createElement('div');
-        adminContent.id = 'admin-content';
-        adminContent.className = 'admin-content';
-        
-        // Секция управления пользователями
-        const userManagementSection = document.createElement('div');
-        userManagementSection.className = 'admin-section';
-        userManagementSection.innerHTML = `
-            <h3>Управление пользователями</h3>
-            <div class="admin-input-group">
-                <input type="text" id="ban-username" placeholder="Имя пользователя">
-                <select id="ban-duration">
-                    <option value="300000">5 минут</option>
-                    <option value="3600000">1 час</option>
-                    <option value="86400000">1 день</option>
-                    <option value="604800000">1 неделя</option>
-                    <option value="-1">Навсегда</option>
-                </select>
-                <button id="ban-user-button">Забанить</button>
-                <button id="unban-user-button">Разбанить</button>
+        // Добавляем заголовок и кнопку закрытия
+        adminPanel.innerHTML = `
+            <div class="admin-header">
+                <h2><i class="fas fa-shield-alt"></i> Панель администратора</h2>
+                <button id="close-admin-panel" class="close-btn">&times;</button>
             </div>
-            <div class="banned-users-list">
-                <h4>Забаненные пользователи</h4>
-                <ul id="banned-users-list"></ul>
+            <div class="admin-content">
+                <div class="admin-section">
+                    <h3>Управление пользователями</h3>
+                    <div class="admin-input-group">
+                        <input type="text" id="ban-username" placeholder="Имя пользователя">
+                        <select id="ban-duration">
+                            <option value="-1">Навсегда</option>
+                            <option value="${60 * 1000}">1 минута</option>
+                            <option value="${10 * 60 * 1000}">10 минут</option>
+                            <option value="${60 * 60 * 1000}">1 час</option>
+                            <option value="${24 * 60 * 60 * 1000}">1 день</option>
+                            <option value="${7 * 24 * 60 * 60 * 1000}">1 неделя</option>
+                        </select>
+                        <button id="ban-user-button" class="admin-btn ban-btn">
+                            <i class="fas fa-ban"></i> Забанить
+                        </button>
+                        <button id="unban-user-button" class="admin-btn unban-btn">
+                            <i class="fas fa-user-check"></i> Разбанить
+                        </button>
+                    </div>
+                    <div class="banned-users-list" id="banned-users-list">
+                        <ul></ul>
+                    </div>
+                </div>
+                
+                <div class="admin-section">
+                    <h3>Просмотр приватных комнат</h3>
+                    <div class="admin-input-group">
+                        <select id="private-room-select">
+                            <option value="">Выберите комнату</option>
+                        </select>
+                        <button id="view-room-button" class="admin-btn view-btn">
+                            <i class="fas fa-eye"></i> Просмотреть
+                        </button>
+                    </div>
+                    <div class="admin-room-messages" id="admin-room-messages"></div>
+                </div>
             </div>
         `;
         
-        // Секция просмотра приватных чатов
-        const privateChatSection = document.createElement('div');
-        privateChatSection.className = 'admin-section';
-        privateChatSection.innerHTML = `
-            <h3>Приватные чаты</h3>
-            <div class="admin-input-group">
-                <select id="private-room-select">
-                    <option value="">Выберите комнату</option>
-                </select>
-                <button id="view-room-button">Просмотреть</button>
-            </div>
-            <div id="admin-room-messages" class="admin-room-messages"></div>
-        `;
-        
-        // Добавляем секции в контент
-        adminContent.appendChild(userManagementSection);
-        adminContent.appendChild(privateChatSection);
-        adminPanel.appendChild(adminContent);
-        
-        // Добавляем стили для панели администратора
+        // Добавляем стили для админ-панели
         const style = document.createElement('style');
         style.textContent = `
             .admin-panel {
                 position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 80%;
                 top: 10px;
                 right: 10px;
                 width: 350px;
