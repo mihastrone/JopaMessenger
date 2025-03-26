@@ -622,39 +622,88 @@ io.on('connection', (socket) => {
     
     // Сохраняем аватар, если он был предоставлен
     if (avatar) {
-      // Конвертируем base64 в бинарные данные
-      const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      
-      // Генерируем уникальное имя файла
-      const filename = `${username}_${Date.now()}.jpg`;
-      const avatarPath = path.join(AVATARS_DIR, filename);
-      
-      // Сохраняем файл
-      fs.writeFile(avatarPath, buffer, (err) => {
-        if (err) {
-          console.error('Ошибка при сохранении аватара:', err);
-        } else {
-          console.log(`Аватар для ${username} сохранен: ${avatarPath}`);
-          
-          // Сохраняем путь к аватару (относительный путь для клиента)
-          userAvatars[username] = `/uploads/avatars/${filename}`;
+      try {
+        // Проверяем существование директории
+        if (!fs.existsSync(AVATARS_DIR)) {
+          fs.mkdirSync(AVATARS_DIR, { recursive: true });
+          console.log(`Создана директория для аватаров: ${AVATARS_DIR}`);
         }
-      });
+        
+        // Проверяем формат (должен быть base64 изображения)
+        if (!avatar.startsWith('data:image/')) {
+          socket.emit('register_response', { 
+            success: false, 
+            message: 'Неверный формат изображения аватара' 
+          });
+          return;
+        }
+        
+        // Конвертируем base64 в бинарные данные
+        const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Генерируем уникальное имя файла
+        const filename = `${username}_${Date.now()}.jpg`;
+        const avatarPath = path.join(AVATARS_DIR, filename);
+        
+        // Сохраняем файл синхронно для гарантии сохранения перед отправкой ответа
+        fs.writeFileSync(avatarPath, buffer);
+        console.log(`Аватар для ${username} сохранен: ${avatarPath}`);
+        
+        // Сохраняем путь к аватару (относительный путь для клиента)
+        userAvatars[username] = `/uploads/avatars/${filename}`;
+        
+        // Синхронизируем с userManager
+        userManager.userDatabase = userDatabase;
+        userManager.userAvatars = userAvatars;
+        
+        // Сохраняем учетные данные в файл
+        saveAllData();
+        
+        // Отправляем успешный ответ
+        socket.emit('register_response', { 
+          success: true, 
+          message: 'Регистрация успешна! Теперь вы можете войти.',
+          avatarUrl: userAvatars[username]
+        });
+      } catch (error) {
+        console.error("Ошибка при обработке аватара:", error);
+        
+        // Если аватар не предоставлен или возникла ошибка, используем аватар по умолчанию
+        userAvatars[username] = '/uploads/default-avatar.png';
+        
+        // Синхронизируем с userManager
+        userManager.userDatabase = userDatabase;
+        userManager.userAvatars = userAvatars;
+        
+        // Сохраняем учетные данные в файл
+        saveAllData();
+        
+        // Отправляем успешный ответ
+        socket.emit('register_response', { 
+          success: true, 
+          message: 'Регистрация успешна! Теперь вы можете войти. Аватар установлен по умолчанию.',
+          avatarUrl: userAvatars[username]
+        });
+      }
     } else {
       // Если аватар не предоставлен, используем аватар по умолчанию
       userAvatars[username] = '/uploads/default-avatar.png';
+      
+      // Синхронизируем с userManager
+      userManager.userDatabase = userDatabase;
+      userManager.userAvatars = userAvatars;
+      
+      // Сохраняем учетные данные в файл
+      saveAllData();
+      
+      // Отправляем успешный ответ
+      socket.emit('register_response', { 
+        success: true, 
+        message: 'Регистрация успешна! Теперь вы можете войти.',
+        avatarUrl: userAvatars[username]
+      });
     }
-    
-    // Сохраняем учетные данные в файл
-    saveAllData();
-    
-    // Отправляем успешный ответ
-    socket.emit('register_response', { 
-      success: true, 
-      message: 'Регистрация успешна! Теперь вы можете войти.',
-      avatarUrl: userAvatars[username]
-    });
   });
   
   // Регистрация нового пользователя через пароль
@@ -683,47 +732,75 @@ io.on('connection', (socket) => {
     const result = registerUser(username, displayName, password);
     
     if (result.success) {
-      // Устанавливаем аватар по умолчанию, если не предоставлен
-      if (avatar) {
-        // Обработка аватара пользователя (аналогично обработчику 'register')
-        const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
-        const buffer = Buffer.from(base64Data, 'base64');
-        
-        // Генерируем уникальное имя файла
-        const filename = `${username}_${Date.now()}.jpg`;
-        const avatarPath = path.join(AVATARS_DIR, filename);
-        
-        fs.writeFile(avatarPath, buffer, (err) => {
-          if (err) {
-            console.error('Ошибка при сохранении аватара:', err);
+      try {
+        // Устанавливаем аватар по умолчанию, если не предоставлен
+        if (avatar) {
+          // Проверяем существование директории
+          if (!fs.existsSync(AVATARS_DIR)) {
+            fs.mkdirSync(AVATARS_DIR, { recursive: true });
+            console.log(`Создана директория для аватаров: ${AVATARS_DIR}`);
+          }
+          
+          // Проверяем формат (должен быть base64 изображения)
+          if (!avatar.startsWith('data:image/')) {
+            userAvatars[username] = '/uploads/default-avatar.png';
+            console.log(`Для пользователя ${username} установлен аватар по умолчанию: неверный формат изображения`);
           } else {
+            // Обработка аватара пользователя
+            const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            // Генерируем уникальное имя файла
+            const filename = `${username}_${Date.now()}.jpg`;
+            const avatarPath = path.join(AVATARS_DIR, filename);
+            
+            // Сохраняем файл синхронно
+            fs.writeFileSync(avatarPath, buffer);
             userAvatars[username] = `/uploads/avatars/${filename}`;
             console.log(`Аватар для ${username} сохранен: ${avatarPath}`);
           }
-        });
-      } else {
-        // Если аватар не предоставлен, используем аватар по умолчанию
+        } else {
+          // Если аватар не предоставлен, используем аватар по умолчанию
+          userAvatars[username] = '/uploads/default-avatar.png';
+        }
+        
+        // Синхронизируем с userManager
+        userManager.userAvatars = userAvatars;
+        
+        // Сохраняем данные
+        saveAllData();
+        
+        // Авторизуем пользователя после успешной регистрации
+        users[socket.id] = username;
+        activeUsers[username] = { socketId: socket.id, displayName };
+        
+        // Добавляем URL аватара к результату
+        result.avatar = userAvatars[username];
+        
+        // Отправляем актуальные сообщения
+        socket.emit('message-history', messages);
+        
+        // Обновляем список пользователей для всех
+        io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
+        
+        // Создаем системное сообщение о подключении
+        const systemMessage = `${displayName} подключился к чату`;
+        io.emit('system-message', systemMessage);
+        
+        console.log(`Пользователь ${username} (${displayName}) зарегистрирован`);
+      } catch (error) {
+        console.error(`Ошибка при регистрации пользователя ${username}:`, error);
+        // Устанавливаем аватар по умолчанию в случае ошибки
         userAvatars[username] = '/uploads/default-avatar.png';
+        result.avatar = userAvatars[username];
+        result.message = 'Регистрация успешна, но возникла ошибка при обработке аватара';
+        
+        // Синхронизируем с userManager
+        userManager.userAvatars = userAvatars;
+        
+        // Сохраняем данные
+        saveAllData();
       }
-      
-      // Авторизуем пользователя после успешной регистрации
-      users[socket.id] = username;
-      activeUsers[username] = { socketId: socket.id, displayName };
-      
-      // Добавляем URL аватара к результату
-      result.avatar = userAvatars[username];
-      
-      // Отправляем актуальные сообщения
-      socket.emit('message-history', messages);
-      
-      // Обновляем список пользователей для всех
-      io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
-      
-      // Создаем системное сообщение о подключении
-      const systemMessage = `${displayName} подключился к чату`;
-      io.emit('system-message', systemMessage);
-      
-      console.log(`Пользователь ${username} (${displayName}) зарегистрирован`);
     }
     
     // Отправляем результат регистрации
@@ -1180,6 +1257,9 @@ io.on('connection', (socket) => {
         // Устанавливаем аватар по умолчанию
         userAvatars[username] = '/uploads/default-avatar.png';
         
+        // Синхронизируем с userManager
+        userManager.userAvatars = userAvatars;
+        
         // Сохраняем изменения
         saveAllData();
         
@@ -1204,90 +1284,98 @@ io.on('connection', (socket) => {
         return;
     }
     
-    // Проверка формата (должен быть base64 изображения)
-    if (!avatar.startsWith('data:image/')) {
-        socket.emit('avatar_update_response', { 
-            success: false, 
-            message: 'Неверный формат изображения' 
-        });
-        return;
-    }
-    
-    // Получаем тип изображения
-    const imageType = avatar.split(';')[0].split('/')[1];
-    
-    // Проверка поддерживаемых форматов
-    const supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
-    if (!supportedFormats.includes(imageType.toLowerCase())) {
-        socket.emit('avatar_update_response', { 
-            success: false, 
-            message: 'Неподдерживаемый формат изображения. Поддерживаются: JPEG, PNG, GIF, WebP' 
-        });
-        return;
-    }
-    
-    // Конвертируем base64 в бинарные данные
-    const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    
-    // Проверка размера файла (максимум 2 МБ)
-    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 МБ
-    if (buffer.length > MAX_FILE_SIZE) {
-        socket.emit('avatar_update_response', { 
-            success: false, 
-            message: 'Размер файла превышает максимально допустимый (2 МБ)' 
-        });
-        return;
-    }
-    
-    // Генерируем уникальное имя файла
-    const filename = `${username}_${Date.now()}.${imageType.toLowerCase()}`;
-    const avatarPath = path.join(AVATARS_DIR, filename);
-    
-    // Сохраняем файл
-    fs.writeFile(avatarPath, buffer, (err) => {
-        if (err) {
-            console.error('Ошибка при сохранении аватара:', err);
+    try {
+        // Проверяем существование директории
+        if (!fs.existsSync(AVATARS_DIR)) {
+            fs.mkdirSync(AVATARS_DIR, { recursive: true });
+            console.log(`Создана директория для аватаров: ${AVATARS_DIR}`);
+        }
+        
+        // Проверка формата (должен быть base64 изображения)
+        if (!avatar.startsWith('data:image/')) {
             socket.emit('avatar_update_response', { 
                 success: false, 
-                message: 'Ошибка при сохранении аватара' 
+                message: 'Неверный формат изображения' 
             });
-        } else {
-            console.log(`Аватар для ${username} обновлен: ${avatarPath}`);
-            
-            // Удаляем старый аватар, если он не является аватаром по умолчанию
-            const oldAvatarUrl = userAvatars[username];
-            if (oldAvatarUrl && !oldAvatarUrl.includes('default-avatar')) {
-                try {
-                    // Получаем имя файла из URL
-                    const oldFileName = oldAvatarUrl.split('/').pop();
-                    const oldFilePath = path.join(AVATARS_DIR, oldFileName);
-                    
-                    // Проверяем, существует ли файл
-                    if (fs.existsSync(oldFilePath)) {
-                        fs.unlinkSync(oldFilePath);
-                        console.log(`Удален старый аватар пользователя ${username}: ${oldFilePath}`);
-                    }
-                } catch (error) {
-                    console.error('Ошибка при удалении старого аватара:', error);
-                }
-            }
-            
-            // Сохраняем путь к аватару (относительный путь для клиента)
-            const avatarUrl = `/uploads/avatars/${filename}`;
-            userAvatars[username] = avatarUrl;
-            
-            // Сохраняем обновленные аватары
-            saveAllData();
-            
-            // Отправляем успешный ответ
-            socket.emit('avatar_update_response', { 
-                success: true, 
-                message: 'Аватар успешно обновлен',
-                avatarUrl: avatarUrl
-            });
+            return;
         }
-    });
+        
+        // Получаем тип изображения
+        const imageType = avatar.split(';')[0].split('/')[1];
+        
+        // Проверка поддерживаемых форматов
+        const supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
+        if (!supportedFormats.includes(imageType.toLowerCase())) {
+            socket.emit('avatar_update_response', { 
+                success: false, 
+                message: 'Неподдерживаемый формат изображения. Поддерживаются: JPEG, PNG, GIF, WebP' 
+            });
+            return;
+        }
+        
+        // Конвертируем base64 в бинарные данные
+        const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Проверка размера файла (максимум 2 МБ)
+        const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 МБ
+        if (buffer.length > MAX_FILE_SIZE) {
+            socket.emit('avatar_update_response', { 
+                success: false, 
+                message: 'Размер файла превышает максимально допустимый (2 МБ)' 
+            });
+            return;
+        }
+        
+        // Генерируем уникальное имя файла
+        const filename = `${username}_${Date.now()}.${imageType.toLowerCase()}`;
+        const avatarPath = path.join(AVATARS_DIR, filename);
+        
+        // Удаляем старый аватар, если он не является аватаром по умолчанию
+        const oldAvatarUrl = userAvatars[username];
+        if (oldAvatarUrl && !oldAvatarUrl.includes('default-avatar')) {
+            try {
+                // Получаем имя файла из URL
+                const oldFileName = oldAvatarUrl.split('/').pop();
+                const oldFilePath = path.join(AVATARS_DIR, oldFileName);
+                
+                // Проверяем, существует ли файл
+                if (fs.existsSync(oldFilePath)) {
+                    fs.unlinkSync(oldFilePath);
+                    console.log(`Удален старый аватар пользователя ${username}: ${oldFilePath}`);
+                }
+            } catch (error) {
+                console.error('Ошибка при удалении старого аватара:', error);
+            }
+        }
+        
+        // Сохраняем файл синхронно
+        fs.writeFileSync(avatarPath, buffer);
+        console.log(`Аватар для ${username} обновлен: ${avatarPath}`);
+        
+        // Сохраняем путь к аватару (относительный путь для клиента)
+        const avatarUrl = `/uploads/avatars/${filename}`;
+        userAvatars[username] = avatarUrl;
+        
+        // Синхронизируем с userManager
+        userManager.userAvatars = userAvatars;
+        
+        // Сохраняем обновленные аватары
+        saveAllData();
+        
+        // Отправляем успешный ответ
+        socket.emit('avatar_update_response', { 
+            success: true, 
+            message: 'Аватар успешно обновлен',
+            avatarUrl: avatarUrl
+        });
+    } catch (error) {
+        console.error('Ошибка при обновлении аватара:', error);
+        socket.emit('avatar_update_response', { 
+            success: false, 
+            message: `Ошибка при обновлении аватара: ${error.message}` 
+        });
+    }
   });
 });
 
@@ -1303,8 +1391,17 @@ function cleanupOldAvatars() {
       return;
     }
     
+    // Проверяем, что путь действительно является директорией
+    const stats = fs.statSync(AVATARS_DIR);
+    if (!stats.isDirectory()) {
+      console.error(`Путь ${AVATARS_DIR} существует, но не является директорией!`);
+      return;
+    }
+    
     // Получаем список всех файлов в директории аватаров
     const files = fs.readdirSync(AVATARS_DIR);
+    console.log(`В директории ${AVATARS_DIR} найдено ${files.length} файлов`);
+    
     const now = Date.now();
     let deletedCount = 0;
     
@@ -1320,23 +1417,40 @@ function cleanupOldAvatars() {
       }
     }
     
+    console.log(`Найдено ${usedAvatars.size} используемых аватаров`);
+    
     // Проверяем каждый файл
     files.forEach(file => {
       // Пропускаем файл аватара по умолчанию
-      if (file === 'default-avatar.png') return;
+      if (file === 'default-avatar.png') {
+        console.log('Пропускаем аватар по умолчанию');
+        return;
+      }
       
       const filePath = path.join(AVATARS_DIR, file);
       
       try {
+        // Проверяем, что это файл, а не директория
+        const fileStats = fs.statSync(filePath);
+        if (!fileStats.isFile()) {
+          console.log(`Пропускаем ${file}, так как это не файл`);
+          return;
+        }
+        
         // Получаем информацию о файле
-        const stats = fs.statSync(filePath);
-        const fileAge = now - stats.mtimeMs;
+        const fileAge = now - fileStats.mtimeMs;
         
         // Удаляем файлы, которые старше указанного возраста И не используются
         if ((fileAge > IMAGE_MAX_AGE) && !usedAvatars.has(file)) {
           fs.unlinkSync(filePath);
           deletedCount++;
           console.log(`Удален старый аватар: ${file}, возраст: ${Math.round(fileAge / (1000 * 60 * 60))} часов`);
+        } else {
+          if (usedAvatars.has(file)) {
+            console.log(`Файл ${file} используется - пропускаем`);
+          } else {
+            console.log(`Файл ${file} еще не достиг возраста для удаления: ${Math.round(fileAge / (1000 * 60 * 60))}/${Math.round(IMAGE_MAX_AGE / (1000 * 60 * 60))} часов`);
+          }
         }
       } catch (error) {
         console.error(`Ошибка при обработке файла аватара ${file}:`, error);
