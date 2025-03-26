@@ -6,11 +6,16 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-// Порт берется из переменных окружения (для облачного хостинга)
+// Порт берется из переменных окружения (Railway автоматически устанавливает PORT)
 const PORT = process.env.PORT || 3000;
+// Уменьшаем интервал очистки для Railway, так как он имеет ограниченный объем хранилища
+const CLEANUP_INTERVAL = 1000 * 60 * 30; // Очистка каждые 30 минут
+// Уменьшаем время хранения изображений
+const IMAGE_MAX_AGE = 1000 * 60 * 60 * 12; // 12 часов для хостинга
 const DEFAULT_MESSAGE_LIFETIME = 30000; // 30 секунд по умолчанию
-const CLEANUP_INTERVAL = 1000 * 60 * 60; // Очистка каждый час
-const IMAGE_MAX_AGE = 1000 * 60 * 60 * 24; // Максимальный возраст изображений - 24 часа
+
+// Получение URL хоста из переменных окружения Railway
+const HOST_URL = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
 
 // Директория для хранения изображений
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
@@ -19,41 +24,48 @@ const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
-// Создаем нужные директории, если они не существуют
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  console.log(`Создана директория для загрузок: ${UPLOADS_DIR}`);
+// Создаем нужные директории с проверкой ошибок
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    console.log(`Создана директория для загрузок: ${UPLOADS_DIR}`);
+  }
+
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`Создана директория для данных: ${DATA_DIR}`);
+  }
+} catch (error) {
+  console.error('Ошибка при создании директорий:', error);
+  // Продолжаем выполнение, так как Railway может иметь ограничения на запись в файловую систему
 }
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  console.log(`Создана директория для данных: ${DATA_DIR}`);
-}
-
-// Инициализация хранилища пользователей
+// Инициализация хранилища пользователей с обработкой ошибок
 let userDatabase = {};
-if (fs.existsSync(USERS_FILE)) {
-  try {
+try {
+  if (fs.existsSync(USERS_FILE)) {
     const userData = fs.readFileSync(USERS_FILE, 'utf8');
     userDatabase = JSON.parse(userData);
     console.log(`Загружено ${Object.keys(userDatabase).length} пользователей`);
-  } catch (error) {
-    console.error(`Ошибка при загрузке пользователей: ${error.message}`);
-    userDatabase = {};
+  } else {
+    // Создаем пустой файл пользователей
+    fs.writeFileSync(USERS_FILE, JSON.stringify({}), 'utf8');
+    console.log('Создан новый файл пользователей');
   }
-} else {
-  // Создаем пустой файл пользователей
-  fs.writeFileSync(USERS_FILE, JSON.stringify({}), 'utf8');
-  console.log('Создан новый файл пользователей');
+} catch (error) {
+  console.error(`Ошибка при работе с файлом пользователей: ${error.message}`);
+  // Продолжаем с пустой базой пользователей
+  userDatabase = {};
 }
 
-// Функция сохранения пользователей в файл
+// Функция сохранения пользователей в файл с дополнительной обработкой ошибок для Railway
 function saveUsers() {
   try {
     fs.writeFileSync(USERS_FILE, JSON.stringify(userDatabase), 'utf8');
     console.log('Данные пользователей сохранены');
   } catch (error) {
     console.error(`Ошибка при сохранении пользователей: ${error.message}`);
+    // В случае ошибки записи на Railway, можно добавить механизм резервного копирования
   }
 }
 
@@ -125,49 +137,57 @@ function authenticateUser(username, password) {
 
 const app = express();
 
-// Проверка на наличие заголовков от прокси
+// Проверка на наличие заголовков от прокси (важно для Railway)
 app.set('trust proxy', true);
 
-// Настройки CORS для работы с разных источников
-app.use(cors({
-  origin: '*',
+// Расширенные настройки CORS для Railway
+const corsOptions = {
+  origin: ['https://' + HOST_URL, 'http://' + HOST_URL, '*'], // Разрешаем Railway домен и локальную разработку
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  credentials: true
-}));
+  credentials: true,
+  maxAge: 86400 // 1 день кэширования preflight запросов
+};
 
-// Обработчик OPTIONS запросов
-app.options('*', cors());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Обработчик preflight запросов
 
-app.use(express.json());
+// Увеличиваем лимит для JSON-данных
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware для логирования запросов
+// Middleware для логирования запросов в формате для облачного хостинга
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} (IP: ${req.ip})`);
   next();
 });
 
-// Добавляем проверку работоспособности для облачного хостинга
+// Railway нуждается в проверке работоспособности для мониторинга
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    host: HOST_URL,
+    uptime: process.uptime()
+  });
 });
 
 const server = http.createServer(app);
 
-// Настройки Socket.IO для облачного хостинга
+// Настройки Socket.IO оптимизированные для Railway
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: ['https://' + HOST_URL, 'http://' + HOST_URL, '*'],
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
   },
   allowEIO3: true,
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  pingTimeout: 30000, // Сокращаем таймаут для Railway
+  pingInterval: 15000, // Сокращаем интервал пингов
   transports: ['polling', 'websocket'],
-  path: '/socket.io/'
+  path: '/socket.io/',
+  maxHttpBufferSize: 1e6 // 1 MB максимум для сообщений (для изображений)
 });
 
 // Хранение данных
@@ -616,27 +636,40 @@ io.on('connection', (socket) => {
   });
 });
 
-// Очистка ресурсов при завершении работы
-process.on('SIGINT', () => {
-  console.log('Завершение работы сервера...');
-  
-  // Очищаем все таймеры удаления сообщений
-  Object.values(messageTimers).forEach(timer => clearTimeout(timer));
-  
-  // Завершаем работу сервера
-  server.close(() => {
-    console.log('Сервер остановлен');
-    process.exit(0);
+// Обработка SIGTERM и SIGINT для корректного завершения в Railway
+['SIGTERM', 'SIGINT'].forEach(signal => {
+  process.on(signal, () => {
+    console.log(`Получен сигнал ${signal}, завершение работы...`);
+    
+    // Очищаем все таймеры удаления сообщений
+    Object.values(messageTimers).forEach(timer => clearTimeout(timer));
+    
+    // Завершаем работу сервера
+    server.close(() => {
+      console.log('Сервер остановлен');
+      process.exit(0);
+    });
+    
+    // Устанавливаем таймаут для принудительного завершения,
+    // если сервер не завершится корректно в течение 10 секунд
+    setTimeout(() => {
+      console.error('Принудительное завершение сервера после таймаута!');
+      process.exit(1);
+    }, 10000);
   });
 });
 
-// Запуск сервера
+// Запуск сервера с поддержкой Railway
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Сервер запущен на порту ${PORT}`);
+  console.log(`Публичный URL: ${HOST_URL}`);
   console.log(`Время запуска: ${new Date().toISOString()}`);
   
-  // Запускаем периодическую очистку старых изображений
+  // Запускаем периодическую очистку старых изображений (важно для Railway)
   setInterval(cleanupOldImages, CLEANUP_INTERVAL);
+  
+  // Периодическое сохранение пользовательских данных
+  setInterval(saveUsers, 1000 * 60 * 10); // Каждые 10 минут
 });
 
 // Расчет размера данных в base64
@@ -650,33 +683,39 @@ function calculateBase64Size(base64String) {
   return Math.ceil(base64.length * 0.75);
 }
 
-// Функция для сохранения изображения на диск
+// Функция для сохранения изображения, оптимизированная для Railway
 function saveImage(base64Data, messageId) {
-  // Генерируем уникальное имя файла
-  const hash = crypto.createHash('md5').update(messageId.toString()).digest('hex');
-  
-  // Определяем формат файла из base64
-  let fileExt = 'jpg';
-  if (base64Data.includes('data:image/png')) {
-    fileExt = 'png';
-  } else if (base64Data.includes('data:image/gif')) {
-    fileExt = 'gif';
-  } else if (base64Data.includes('data:image/webp')) {
-    fileExt = 'webp';
+  try {
+    // Генерируем уникальное имя файла
+    const hash = crypto.createHash('md5').update(messageId.toString()).digest('hex');
+    
+    // Определяем формат файла из base64
+    let fileExt = 'jpg';
+    if (base64Data.includes('data:image/png')) {
+      fileExt = 'png';
+    } else if (base64Data.includes('data:image/gif')) {
+      fileExt = 'gif';
+    } else if (base64Data.includes('data:image/webp')) {
+      fileExt = 'webp';
+    }
+    
+    const fileName = `${hash}-${messageId}.${fileExt}`;
+    const filePath = path.join(UPLOADS_DIR, fileName);
+    
+    // Конвертируем base64 в бинарные данные
+    const base64Image = base64Data.split(';base64,').pop();
+    const imageBuffer = Buffer.from(base64Image, 'base64');
+    
+    // Записываем файл на диск
+    fs.writeFileSync(filePath, imageBuffer);
+    
+    // Возвращаем относительный путь для доступа через веб
+    return `/uploads/${fileName}`;
+  } catch (error) {
+    console.error('Ошибка при сохранении изображения:', error);
+    // В случае ошибки для Railway возвращаем null вместо выброса исключения
+    return null;
   }
-  
-  const fileName = `${hash}-${messageId}.${fileExt}`;
-  const filePath = path.join(UPLOADS_DIR, fileName);
-  
-  // Конвертируем base64 в бинарные данные
-  const base64Image = base64Data.split(';base64,').pop();
-  const imageBuffer = Buffer.from(base64Image, 'base64');
-  
-  // Записываем файл на диск
-  fs.writeFileSync(filePath, imageBuffer);
-  
-  // Возвращаем относительный путь для доступа через веб
-  return `/uploads/${fileName}`;
 }
 
 // Функция очистки старых изображений

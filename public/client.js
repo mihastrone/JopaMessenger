@@ -52,12 +52,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
     let cachedMessages = new Map(); // Кэш сообщений для каждой комнаты (включая общий чат)
     
-    // Настройки изображений
+    // Настройки изображений (оптимизировано для Railway)
     let currentImage = null;
-    const MAX_IMAGE_WIDTH = 1024; // Максимальная ширина изображения
-    const MAX_IMAGE_HEIGHT = 1024; // Максимальная высота изображения
-    const IMAGE_QUALITY = 0.7; // Качество сжатия JPEG (0-1)
-    const MAX_IMAGE_SIZE = 500 * 1024; // Максимальный размер файла в байтах (500KB)
+    const MAX_IMAGE_WIDTH = 800; // Уменьшаем до 800px для Railway
+    const MAX_IMAGE_HEIGHT = 800; // Уменьшаем до 800px для Railway
+    const IMAGE_QUALITY = 0.6; // Снижаем качество для Railway
+    const MAX_IMAGE_SIZE = 300 * 1024; // Уменьшаем максимальный размер до 300KB для Railway
     
     // Настройки автоудаления
     let autoDeleteEnabled = true;
@@ -72,8 +72,9 @@ document.addEventListener('DOMContentLoaded', () => {
         receiveSound: 'message-received.mp3'
     };
 
-    let socket;
-    window.socket = socket;
+    // Инициализируем socket как null
+    let socket = null;
+    window.socket = null;
     
     // Флаг для определения, нужно ли автоматически прокручивать чат
     let shouldScrollToBottom = true;
@@ -154,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Аутентификация пользователя
     function authenticateUser(username, password) {
-        // В облачном хостинге будем использовать текущее положение
+        // Автоматически определяем URL сервера на основе текущего хоста (для Railway)
         const serverUrl = window.location.origin;
         
         connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
@@ -164,16 +165,28 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConnectionStatus('connecting');
         
         try {
-            // Настройки Socket.IO клиента
+            // Оптимизированные настройки Socket.IO для Railway
             socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 10000,
+                autoConnect: true,
+                // Включаем сжатие для Railway
+                compress: true
             });
             
+            // Сохраняем в глобальную переменную
+            window.socket = socket;
+            
             // Обновляем информацию о сервере
-            const serverName = window.location.hostname.split('.')[0];
-            connectedServer.textContent = serverName === 'localhost' ? 'локальный сервер' : serverName;
+            const serverName = window.location.hostname;
+            // Проверяем, является ли хост Railway-доменом
+            const isRailway = serverName.includes('railway.app') || 
+                             serverName.includes('up.railway.app');
+                
+            connectedServer.textContent = isRailway ? 'Railway Cloud' : 
+                                         (serverName === 'localhost' ? 'локальный сервер' : serverName);
             
             // Обработчики событий Socket.io
             setupSocketListeners();
@@ -235,23 +248,35 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Подключение к серверу и отправка запроса на регистрацию
+        // Автоматически определяем URL сервера (для Railway)
         const serverUrl = window.location.origin;
         
         connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
         console.log('Подключение к серверу для регистрации:', serverUrl);
         
         try {
-            // Настройки Socket.IO клиента
+            // Оптимизированные настройки Socket.IO для Railway
             socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 10000,
+                autoConnect: true,
+                // Включаем сжатие для Railway
+                compress: true
             });
             
+            // Сохраняем в глобальную переменную
+            window.socket = socket;
+            
             // Обновляем информацию о сервере
-            const serverName = window.location.hostname.split('.')[0];
-            connectedServer.textContent = serverName === 'localhost' ? 'локальный сервер' : serverName;
+            const serverName = window.location.hostname;
+            // Проверяем, является ли хост Railway-доменом
+            const isRailway = serverName.includes('railway.app') || 
+                             serverName.includes('up.railway.app');
+                             
+            connectedServer.textContent = isRailway ? 'Railway Cloud' : 
+                                         (serverName === 'localhost' ? 'локальный сервер' : serverName);
             
             // Обработчики событий Socket.io
             setupSocketListeners();
@@ -350,6 +375,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayName = result.displayName;
                 window.displayName = displayName;
                 
+                // Обновляем глобальную переменную socket
+                window.socket = socket;
+                
                 // Сохраняем учетные данные, если выбрано "Запомнить меня"
                 if (rememberMe.checked) {
                     saveCredentials(username, loginPassword.value, displayName);
@@ -384,6 +412,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.username = username;
                 displayName = registerDisplayName.value.trim();
                 window.displayName = displayName;
+                
+                // Обновляем глобальную переменную socket
+                window.socket = socket;
                 
                 // Сохраняем учетные данные, если выбрано "Запомнить меня"
                 if (rememberMe.checked) {
@@ -454,6 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Получение нового сообщения
         socket.on('new-message', (message) => {
+            console.log('Получено новое сообщение:', message);
             const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
             
             const messageElement = addMessageToUI(message);
@@ -469,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Прокручиваем вниз только если пользователь был внизу
-            if (shouldScrollToBottom || message.user === username) {
+            if (shouldScrollToBottom || message.username === username) {
                 scrollToBottom();
             }
         });
@@ -487,7 +519,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Обработчики событий комнат
         socket.on('room_created', ({ roomId, roomName, creator }) => {
+            console.log('Комната создана:', roomId, roomName, creator);
+            
+            // Добавляем комнату в список только если ее еще нет
+            if (!rooms.has(roomId)) {
+                rooms.set(roomId, { 
+                    name: roomName, 
+                    autoDeleteEnabled: true,
+                    messageLifetime: 30000
+                });
+                
+                // Сохраняем настройки
+                saveSettings();
+                
+                // Обновляем список комнат
+                updateRoomsList();
+            }
+            
             addSystemMessageToUI(`Создана новая комната: ${roomName}`);
+            
+            // Если создатель текущий пользователь, автоматически входим в созданную комнату
+            if (creator === username) {
+                joinRoom(roomId);
+            }
         });
         
         socket.on('room_joined', ({ roomId, roomName }) => {
@@ -527,6 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         socket.on('room_message', (message) => {
+            console.log('Получено сообщение для комнаты:', message);
             if (message.roomId === currentRoom) {
                 const messageElement = addMessageToUI(message);
                 
@@ -539,6 +594,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     roomMessages.push(messageElement.cloneNode(true));
                     cachedMessages.set(currentRoom, roomMessages);
                 }
+                
+                // Прокручиваем вниз
+                scrollToBottom();
             }
         });
         
@@ -580,6 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Модифицированная функция добавления сообщения в UI
     function addMessageToUI(message) {
+        console.log('Добавление сообщения в UI:', message);
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
         messageElement.id = `message-${message.timestamp}`;
@@ -600,11 +659,12 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
         
-        const isOwnMessage = message.user === username;
+        // Используем username из сообщения для сравнения с текущим пользователем
+        const isOwnMessage = message.username === window.username;
         messageElement.classList.add(isOwnMessage ? 'own' : 'other');
         
         // Используем displayName если он есть, или username в качестве запасного варианта
-        const senderName = message.displayName || message.user;
+        const senderName = message.displayName || message.username;
         
         messageElement.innerHTML = `
             <div class="message-header">
@@ -837,9 +897,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuthTabs();
     checkSavedCredentials();
     
-    // Удаляем комментарий о звуковых настройках
-    initializeUI();
-    
     // Настройка обработчиков комнат
     function setupRoomHandlers() {
         console.log('Настройка обработчиков комнат, createRoomButton:', createRoomButton ? 'найден' : 'не найден');
@@ -960,6 +1017,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Добавляем обработчики к новым кнопкам
         setupRoomListHandlers();
     }
+    window.updateRoomsList = updateRoomsList;
     
     // Отдельная функция для обработчиков комнат
     function setupRoomListHandlers() {
@@ -1038,6 +1096,7 @@ document.addEventListener('DOMContentLoaded', () => {
             scrollToBottom();
         }
     }
+    window.joinRoom = joinRoom;
     
     // Выход из комнаты
     function leaveRoom() {
@@ -1078,6 +1137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.emit('get_messages');
         }
     }
+    window.leaveRoom = leaveRoom;
     
     // Сохранение настроек комнат
     function saveSettings() {
@@ -1104,21 +1164,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // Загрузка настроек комнат
     function loadSettings() {
         try {
-            const savedRooms = JSON.parse(localStorage.getItem('chat_rooms')) || {};
-            console.log('Загружаю сохраненные комнаты:', savedRooms);
-            rooms = new Map(Object.entries(savedRooms));
+            // Загружаем сохраненные комнаты
+            const savedRoomsStr = localStorage.getItem('chat_rooms');
+            console.log('Загружаю сохраненные комнаты (строка):', savedRoomsStr);
             
-            const savedAutoDelete = JSON.parse(localStorage.getItem('auto_delete_enabled'));
+            if (savedRoomsStr) {
+                const savedRooms = JSON.parse(savedRoomsStr) || {};
+                console.log('Загружаю сохраненные комнаты (объект):', savedRooms);
+                
+                // Обновляем глобальную переменную rooms
+                window.rooms = new Map(Object.entries(savedRooms));
+                rooms = window.rooms;
+            }
+            
+            // Загружаем настройки автоудаления
+            const savedAutoDelete = localStorage.getItem('auto_delete_enabled');
             if (savedAutoDelete !== null) {
-                autoDeleteEnabled = savedAutoDelete;
+                autoDeleteEnabled = JSON.parse(savedAutoDelete);
                 if (autoDeleteToggle) {
                     autoDeleteToggle.checked = autoDeleteEnabled;
                 }
             }
             
-            const savedLifetime = JSON.parse(localStorage.getItem('message_lifetime'));
+            // Загружаем время жизни сообщений
+            const savedLifetime = localStorage.getItem('message_lifetime');
             if (savedLifetime) {
-                messageLifetime = savedLifetime;
+                messageLifetime = JSON.parse(savedLifetime);
                 if (deleteTimeSelect) {
                     deleteTimeSelect.value = messageLifetime;
                 }
@@ -1126,6 +1197,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем список комнат после загрузки
             updateRoomsList();
+            console.log('Комнаты после загрузки:', Array.from(rooms.entries()));
         } catch (error) {
             console.error('Ошибка загрузки настроек:', error);
         }
@@ -1217,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Обработка изображения
+    // Обработка изображения с оптимизацией для Railway
     function processImage(file) {
         if (!file || file.type.indexOf('image') === -1) return;
         
@@ -1231,38 +1303,57 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
-                // Сжимаем изображение, если оно слишком большое
+                // Сжимаем изображение для Railway
                 const canvas = document.createElement('canvas');
                 let width = img.width;
                 let height = img.height;
                 
-                // Уменьшаем размер, сохраняя пропорции
+                // Более агрессивное уменьшение размера для Railway
                 if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
-                    if (width > height) {
-                        // Ландшафтная ориентация
-                        height = height * (MAX_IMAGE_WIDTH / width);
-                        width = MAX_IMAGE_WIDTH;
-                    } else {
-                        // Портретная ориентация
-                        width = width * (MAX_IMAGE_HEIGHT / height);
-                        height = MAX_IMAGE_HEIGHT;
-                    }
+                    const ratio = Math.min(MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height);
+                    width = Math.floor(width * ratio);
+                    height = Math.floor(height * ratio);
                 }
                 
                 canvas.width = width;
                 canvas.height = height;
                 
                 const ctx = canvas.getContext('2d');
+                // Улучшенное качество рендеринга
+                ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // Конвертируем в JPEG с указанным качеством
-                const dataURL = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+                // Используем webp для лучшего сжатия, если браузер поддерживает
+                let dataURL;
+                if (typeof canvas.toBlob === 'function' && window.navigator.userAgent.indexOf('Edge') === -1) {
+                    try {
+                        // Пробуем WebP для современных браузеров
+                        dataURL = canvas.toDataURL('image/webp', IMAGE_QUALITY);
+                        if (dataURL.indexOf('data:image/webp') !== 0) {
+                            // Fallback к JPEG если WebP не поддерживается
+                            dataURL = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+                        }
+                    } catch (e) {
+                        // Fallback к JPEG при ошибках
+                        dataURL = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+                    }
+                } else {
+                    // Fallback для старых браузеров
+                    dataURL = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+                }
                 
                 // Проверка размера после сжатия
                 const base64Size = dataURL.length * 3 / 4; // Приблизительный размер в байтах
                 if (base64Size > MAX_IMAGE_SIZE) {
-                    alert(`Изображение слишком большое даже после сжатия. Пожалуйста, используйте меньшее изображение.`);
-                    return;
+                    // Если изображение всё еще слишком большое, пробуем еще сильнее сжать
+                    const secondPassQuality = IMAGE_QUALITY * 0.7;
+                    dataURL = canvas.toDataURL('image/jpeg', secondPassQuality);
+                    
+                    const newSize = dataURL.length * 3 / 4;
+                    if (newSize > MAX_IMAGE_SIZE) {
+                        alert(`Изображение слишком большое даже после сжатия (${Math.round(newSize/1024)}KB). Пожалуйста, используйте меньшее изображение.`);
+                        return;
+                    }
                 }
                 
                 // Сохраняем и показываем превью
@@ -1316,6 +1407,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Модифицированная функция отправки сообщения
     function sendMessage() {
         console.log('Вызвана функция отправки сообщения');
+        
+        // Проверяем, доступен ли сокет
+        if (!window.socket) {
+            console.error('Сокет не инициализирован!');
+            alert('Ошибка подключения к серверу');
+            return;
+        }
+        
         const text = messageInput.value.trim();
         
         // Если нет ни текста, ни изображения
@@ -1326,16 +1425,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const message = {
             text,
-            username,
-            displayName,
+            username: window.username, // Используем глобальную переменную
+            displayName: window.displayName, // Используем глобальную переменную
             timestamp: Date.now(),
-            roomId: currentRoom,
+            roomId: window.currentRoom, // Используем глобальную переменную
             hasImage: !!currentImage,
             image: currentImage
         };
         
         console.log('Отправка сообщения:', message);
-        socket.emit('message', message);
+        window.socket.emit('message', message); // Используем глобальную переменную
         messageInput.value = '';
         
         // Очищаем изображение после отправки
@@ -1349,7 +1448,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Обновляем UI после отправки
         scrollToBottom();
     }
-
+    window.sendMessage = sendMessage; // Делаем доступной глобально
+    
     // Добавление обработчиков для отправки сообщений (вызывается в основном блоке кода)
     function setupMessageHandlers() {
         console.log('Настройка обработчиков отправки сообщений');
@@ -1468,11 +1568,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Добавляю прямой обработчик для кнопки создания комнаты');
                 createRoomBtn.onclick = function() {
                     console.log('Прямой клик по кнопке создания комнаты');
+                    
+                    // Проверяем, что пользователь авторизован и сокет доступен
+                    if (!window.socket) {
+                        console.error('Сокет не инициализирован!');
+                        alert('Ошибка подключения к серверу');
+                        return;
+                    }
+                    
                     const roomName = prompt('Введите название комнаты:');
-                    if (roomName && roomName.trim() && window.socket) {
+                    if (roomName && roomName.trim()) {
                         // Генерируем случайный ID комнаты
                         const roomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-                        console.log('Создание комнаты:', roomId, roomName.trim());
+                        console.log('Создание комнаты:', roomId, roomName.trim(), 'от пользователя:', window.username);
                         
                         // Отправляем запрос на создание комнаты
                         window.socket.emit('create_room', { 
@@ -1490,18 +1598,34 @@ document.addEventListener('DOMContentLoaded', () => {
                                 autoDeleteEnabled: true, 
                                 messageLifetime: 30000 
                             });
+                            
+                            // Сохраняем настройки
                             if (typeof window.saveSettings === 'function') {
                                 window.saveSettings();
+                            } else {
+                                console.error('Функция saveSettings не найдена');
                             }
+                            
+                            // Обновляем список комнат
                             if (typeof window.updateRoomsList === 'function') {
                                 window.updateRoomsList();
+                            } else {
+                                console.error('Функция updateRoomsList не найдена');
                             }
+                            
+                            // Входим в комнату
                             if (typeof window.joinRoom === 'function') {
                                 window.joinRoom(roomId);
+                            } else {
+                                console.error('Функция joinRoom не найдена');
                             }
+                        } else {
+                            console.error('window.rooms не найдена');
                         }
                     }
                 };
+            } else {
+                console.error('Кнопка создания комнаты не найдена по ID');
             }
             
             // Обработчик для кнопки отправки сообщения
@@ -1515,22 +1639,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.preventDefault();
                     console.log('Прямой клик по кнопке отправки сообщения');
                     
-                    const text = messageInput.value.trim();
-                    if (!text) return;
-                    
-                    if (window.socket) {
-                        const message = {
-                            text: text,
-                            username: window.username,
-                            displayName: window.displayName,
-                            timestamp: Date.now(),
-                            roomId: window.currentRoom,
-                            hasImage: false
-                        };
+                    // Проверка наличия функции отправки сообщений
+                    if (typeof window.sendMessage === 'function') {
+                        window.sendMessage();
+                    } else {
+                        console.error('Функция sendMessage не найдена');
                         
-                        console.log('Отправка сообщения напрямую:', message);
-                        window.socket.emit('message', message);
-                        messageInput.value = '';
+                        // Резервный вариант отправки
+                        const text = messageInput.value.trim();
+                        if (!text) return;
+                        
+                        if (window.socket) {
+                            const message = {
+                                text: text,
+                                username: window.username,
+                                displayName: window.displayName,
+                                timestamp: Date.now(),
+                                roomId: window.currentRoom,
+                                hasImage: false
+                            };
+                            
+                            console.log('Отправка сообщения напрямую (резервный вариант):', message);
+                            window.socket.emit('message', message);
+                            messageInput.value = '';
+                        } else {
+                            console.error('Сокет не инициализирован');
+                            alert('Ошибка подключения к серверу');
+                        }
                     }
                 };
                 
@@ -1542,6 +1677,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         return false;
                     }
                 };
+            } else {
+                console.error('Элементы для отправки сообщений не найдены');
             }
         });
     })();

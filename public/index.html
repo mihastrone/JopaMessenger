@@ -3,9 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: ws: wss:;">
-    <title>Jopa Messenger</title>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Jopa Messenger | Чат с авторизацией и комнатами</title>
+    
+    <!-- Мета-теги для Railway хостинга -->
+    <meta name="description" content="Современный мессенджер с авторизацией и приватными комнатами">
+    <meta name="theme-color" content="#4a76a8">
+    <meta name="robots" content="index, follow">
+    
+    <!-- Предзагрузка ключевых ресурсов -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+    
+    <!-- Оптимизированная загрузка стилей -->
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Отложенная загрузка скриптов -->
+    <script src="/socket.io/socket.io.js" defer></script>
+    <script src="client.js" defer></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
     <!-- Заглушка для Socket.IO, если не загрузится через CDN -->
     <script>
@@ -124,12 +139,6 @@
     <div class="image-modal" id="image-modal">
         <img id="modal-image" class="modal-image">
     </div>
-    
-    <!-- Socket.IO с CDN -->
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" 
-        integrity="sha384-mZLF4UVrpi/QTWPA7BjNPEnkIfRFn4ZEO3Qt/HFklTJBj/gBOV8G3HcKn4NfQblz" 
-        crossorigin="anonymous"></script>
-    <script src="client.js"></script>
     
     <script>
         // Обнаружение проблем загрузки Socket.IO
