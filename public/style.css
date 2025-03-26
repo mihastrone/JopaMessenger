@@ -1,0 +1,181 @@
+/* Стили для панели администратора */
+.admin-panel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 350px;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    z-index: 1000;
+    max-height: 80vh;
+    overflow-y: auto;
+    font-family: Arial, sans-serif;
+}
+
+.admin-header {
+    padding: 10px;
+    background-color: #f0f0f0;
+    border-bottom: 1px solid #ccc;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.admin-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: #333;
+}
+
+.admin-content {
+    padding: 10px;
+}
+
+.admin-section {
+    margin-bottom: 20px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 15px;
+}
+
+.admin-section h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: #555;
+}
+
+.admin-section h4 {
+    margin-top: 10px;
+    margin-bottom: 5px;
+    font-size: 14px;
+    color: #777;
+}
+
+.admin-input-group {
+    display: flex;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.admin-input-group input,
+.admin-input-group select {
+    padding: 8px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    flex-grow: 1;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 14px;
+}
+
+.admin-input-group button {
+    padding: 8px 12px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    background-color: #4c7faf;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.admin-input-group button:hover {
+    background-color: #3a6d9e;
+}
+
+.admin-room-messages {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 10px;
+    margin-top: 10px;
+    background-color: #f9f9f9;
+}
+
+.admin-toggle-button {
+    padding: 5px 10px;
+    cursor: pointer;
+    background-color: #e0e0e0;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.admin-toggle-button:hover {
+    background-color: #d0d0d0;
+}
+
+.banned-users-list {
+    margin-top: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 10px;
+    max-height: 150px;
+    overflow-y: auto;
+    background-color: #f9f9f9;
+}
+
+.banned-users-list ul {
+    padding-left: 20px;
+    margin: 0;
+}
+
+.banned-users-list li {
+    margin-bottom: 5px;
+    font-size: 14px;
+    color: #666;
+}
+
+.admin-message {
+    margin-bottom: 10px;
+    padding: 8px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background-color: white;
+}
+
+.admin-message-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.admin-message-username {
+    font-weight: bold;
+    color: #4c7faf;
+}
+
+.admin-message-timestamp {
+    font-size: 12px;
+    color: #999;
+}
+
+.admin-message-content {
+    margin-bottom: 5px;
+    word-break: break-word;
+}
+
+.admin-message-image img {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 4px;
+}
+
+.admin-login-button {
+    padding: 8px 12px;
+    background-color: #d35400;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.admin-login-button:hover {
+    background-color: #ba4a00;
+} 

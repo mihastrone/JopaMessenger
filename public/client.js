@@ -87,6 +87,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let displayName = ''; // Имя, отображаемое в чате
     window.displayName = displayName;
     
+    // Глобальные переменные для админ-панели
+    let isAdmin = false;
+    let bannedUsers = new Map(); // Хранит информацию о забаненных пользователях
+    window.isAdmin = false; // Глобальная переменная для отслеживания статуса администратора
+    
     // Инициализация вкладок авторизации
     function initAuthTabs() {
         if (!authTabs) return;
@@ -2157,4 +2162,435 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     })();
+
+    // Функция для входа в панель администратора
+    function loginAsAdmin() {
+        const adminPassword = prompt('Введите пароль администратора:');
+        if (adminPassword === '71814131Tar') {
+            isAdmin = true;
+            window.isAdmin = true;
+            
+            // Отправляем запрос на сервер для получения статуса администратора
+            socket.emit('admin_login', { username: window.username });
+            
+            // Создаем и показываем панель администратора
+            createAdminPanel();
+            
+            alert('Вы вошли как администратор!');
+            return true;
+        } else {
+            alert('Неверный пароль администратора!');
+            return false;
+        }
+    }
+    
+    // Создание панели администратора
+    function createAdminPanel() {
+        // Проверяем, существует ли уже панель администратора
+        let adminPanel = document.getElementById('admin-panel');
+        if (adminPanel) {
+            adminPanel.style.display = 'block';
+            return;
+        }
+        
+        // Создаем панель администратора
+        adminPanel = document.createElement('div');
+        adminPanel.id = 'admin-panel';
+        adminPanel.className = 'admin-panel';
+        
+        // Добавляем заголовок
+        const adminHeader = document.createElement('div');
+        adminHeader.className = 'admin-header';
+        adminHeader.innerHTML = '<h2>Панель администратора</h2>';
+        
+        // Создаем кнопку для скрытия/показа панели
+        const toggleButton = document.createElement('button');
+        toggleButton.textContent = 'Скрыть панель';
+        toggleButton.className = 'admin-toggle-button';
+        toggleButton.onclick = function() {
+            const panel = document.getElementById('admin-content');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                this.textContent = 'Скрыть панель';
+            } else {
+                panel.style.display = 'none';
+                this.textContent = 'Показать панель';
+            }
+        };
+        adminHeader.appendChild(toggleButton);
+        adminPanel.appendChild(adminHeader);
+        
+        // Создаем контейнер для содержимого панели
+        const adminContent = document.createElement('div');
+        adminContent.id = 'admin-content';
+        adminContent.className = 'admin-content';
+        
+        // Секция управления пользователями
+        const userManagementSection = document.createElement('div');
+        userManagementSection.className = 'admin-section';
+        userManagementSection.innerHTML = `
+            <h3>Управление пользователями</h3>
+            <div class="admin-input-group">
+                <input type="text" id="ban-username" placeholder="Имя пользователя">
+                <select id="ban-duration">
+                    <option value="300000">5 минут</option>
+                    <option value="3600000">1 час</option>
+                    <option value="86400000">1 день</option>
+                    <option value="604800000">1 неделя</option>
+                    <option value="-1">Навсегда</option>
+                </select>
+                <button id="ban-user-button">Забанить</button>
+                <button id="unban-user-button">Разбанить</button>
+            </div>
+            <div class="banned-users-list">
+                <h4>Забаненные пользователи</h4>
+                <ul id="banned-users-list"></ul>
+            </div>
+        `;
+        
+        // Секция просмотра приватных чатов
+        const privateChatSection = document.createElement('div');
+        privateChatSection.className = 'admin-section';
+        privateChatSection.innerHTML = `
+            <h3>Приватные чаты</h3>
+            <div class="admin-input-group">
+                <select id="private-room-select">
+                    <option value="">Выберите комнату</option>
+                </select>
+                <button id="view-room-button">Просмотреть</button>
+            </div>
+            <div id="admin-room-messages" class="admin-room-messages"></div>
+        `;
+        
+        // Добавляем секции в контент
+        adminContent.appendChild(userManagementSection);
+        adminContent.appendChild(privateChatSection);
+        adminPanel.appendChild(adminContent);
+        
+        // Добавляем стили для панели администратора
+        const style = document.createElement('style');
+        style.textContent = `
+            .admin-panel {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                width: 350px;
+                background-color: #fff;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.2);
+                z-index: 1000;
+                max-height: 80vh;
+                overflow-y: auto;
+            }
+            .admin-header {
+                padding: 10px;
+                background-color: #f0f0f0;
+                border-bottom: 1px solid #ccc;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .admin-content {
+                padding: 10px;
+            }
+            .admin-section {
+                margin-bottom: 20px;
+            }
+            .admin-input-group {
+                display: flex;
+                margin-bottom: 10px;
+                flex-wrap: wrap;
+            }
+            .admin-input-group input,
+            .admin-input-group select {
+                padding: 5px;
+                margin-right: 5px;
+                margin-bottom: 5px;
+                flex-grow: 1;
+            }
+            .admin-input-group button {
+                padding: 5px 10px;
+                margin-right: 5px;
+                margin-bottom: 5px;
+            }
+            .admin-room-messages {
+                max-height: 300px;
+                overflow-y: auto;
+                border: 1px solid #ccc;
+                padding: 10px;
+                margin-top: 10px;
+            }
+            .admin-toggle-button {
+                padding: 5px 10px;
+                cursor: pointer;
+            }
+            .banned-users-list {
+                margin-top: 10px;
+                border: 1px solid #ccc;
+                padding: 10px;
+                max-height: 150px;
+                overflow-y: auto;
+            }
+            .banned-users-list ul {
+                padding-left: 20px;
+                margin: 0;
+            }
+            .banned-users-list li {
+                margin-bottom: 5px;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Добавляем панель в документ
+        document.body.appendChild(adminPanel);
+        
+        // Добавляем обработчики событий для кнопок
+        document.getElementById('ban-user-button').addEventListener('click', banUser);
+        document.getElementById('unban-user-button').addEventListener('click', unbanUser);
+        document.getElementById('view-room-button').addEventListener('click', viewPrivateRoom);
+        
+        // Запрашиваем список забаненных пользователей
+        socket.emit('get_banned_users');
+        
+        // Запрашиваем список приватных комнат
+        socket.emit('get_private_rooms');
+        
+        console.log('Панель администратора создана');
+    }
+    
+    // Функция для бана пользователя
+    function banUser() {
+        const username = document.getElementById('ban-username').value.trim();
+        const duration = parseInt(document.getElementById('ban-duration').value);
+        
+        if (!username) {
+            alert('Введите имя пользователя');
+            return;
+        }
+        
+        // Отправляем запрос на сервер
+        socket.emit('ban_user', { username, duration });
+        
+        // Обновляем список забаненных пользователей
+        updateBannedUsersList();
+    }
+    
+    // Функция для разбана пользователя
+    function unbanUser() {
+        const username = document.getElementById('ban-username').value.trim();
+        
+        if (!username) {
+            alert('Введите имя пользователя');
+            return;
+        }
+        
+        // Отправляем запрос на сервер
+        socket.emit('unban_user', { username });
+        
+        // Обновляем список забаненных пользователей
+        updateBannedUsersList();
+    }
+    
+    // Функция для просмотра приватной комнаты
+    function viewPrivateRoom() {
+        const roomId = document.getElementById('private-room-select').value;
+        
+        if (!roomId) {
+            alert('Выберите комнату');
+            return;
+        }
+        
+        // Отправляем запрос на получение сообщений комнаты
+        socket.emit('get_room_messages_admin', { roomId });
+    }
+    
+    // Функция для обновления списка забаненных пользователей
+    function updateBannedUsersList() {
+        // Запрашиваем актуальный список с сервера
+        socket.emit('get_banned_users');
+    }
+    
+    // Обработчик для отображения списка забаненных пользователей
+    function displayBannedUsers(users) {
+        const bannedUsersList = document.getElementById('banned-users-list');
+        if (!bannedUsersList) return;
+        
+        bannedUsersList.innerHTML = '';
+        
+        if (!users || users.length === 0) {
+            bannedUsersList.innerHTML = '<li>Нет забаненных пользователей</li>';
+            return;
+        }
+        
+        users.forEach(user => {
+            const li = document.createElement('li');
+            const banDuration = user.banDuration === -1 ? 
+                'навсегда' : 
+                formatDuration(user.banDuration);
+            
+            const banExpiry = user.banExpiry ? 
+                ` (до ${new Date(user.banExpiry).toLocaleString()})` : 
+                '';
+            
+            li.textContent = `${user.username} - ${banDuration}${banExpiry}`;
+            bannedUsersList.appendChild(li);
+        });
+    }
+    
+    // Функция для отображения сообщений приватной комнаты
+    function displayPrivateRoomMessages(messages, roomName) {
+        const messagesContainer = document.getElementById('admin-room-messages');
+        if (!messagesContainer) return;
+        
+        messagesContainer.innerHTML = `<h4>Сообщения комнаты: ${roomName}</h4>`;
+        
+        if (!messages || messages.length === 0) {
+            messagesContainer.innerHTML += '<p>В этой комнате нет сообщений</p>';
+            return;
+        }
+        
+        messages.forEach(message => {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'admin-message';
+            
+            // Форматируем дату и время
+            const timestamp = new Date(message.timestamp).toLocaleString();
+            
+            messageElement.innerHTML = `
+                <div class="admin-message-header">
+                    <span class="admin-message-username">${message.displayName || message.username}</span>
+                    <span class="admin-message-timestamp">${timestamp}</span>
+                </div>
+                <div class="admin-message-content">${formatMessage(message.text || '')}</div>
+                ${message.image ? `<div class="admin-message-image"><img src="${message.image}" alt="Изображение"></div>` : ''}
+            `;
+            
+            messagesContainer.appendChild(messageElement);
+        });
+    }
+    
+    // Функция для форматирования продолжительности бана
+    function formatDuration(ms) {
+        if (ms === -1) return 'навсегда';
+        
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        if (days > 0) return `${days} д.`;
+        if (hours > 0) return `${hours} ч.`;
+        if (minutes > 0) return `${minutes} мин.`;
+        return `${seconds} сек.`;
+    }
+    
+    // Обновляем обработчики сокетов для админских функций
+    function setupAdminSocketListeners() {
+        // Получение списка забаненных пользователей
+        socket.on('banned_users_list', (users) => {
+            bannedUsers = new Map(users.map(user => [user.username, user]));
+            displayBannedUsers(users);
+        });
+        
+        // Получение списка приватных комнат
+        socket.on('private_rooms_list', (roomsList) => {
+            const roomSelect = document.getElementById('private-room-select');
+            if (!roomSelect) return;
+            
+            // Сохраняем текущий выбор
+            const currentSelection = roomSelect.value;
+            
+            // Очищаем список
+            roomSelect.innerHTML = '<option value="">Выберите комнату</option>';
+            
+            // Добавляем комнаты в список
+            roomsList.forEach(room => {
+                const option = document.createElement('option');
+                option.value = room.id;
+                option.textContent = `${room.name} (Создатель: ${room.creator})`;
+                roomSelect.appendChild(option);
+            });
+            
+            // Восстанавливаем выбор, если возможно
+            if (currentSelection) {
+                roomSelect.value = currentSelection;
+            }
+        });
+        
+        // Получение сообщений приватной комнаты
+        socket.on('room_messages_admin', ({ messages, roomName }) => {
+            displayPrivateRoomMessages(messages, roomName);
+        });
+        
+        // Уведомление о бане пользователя
+        socket.on('user_banned', (data) => {
+            console.log(`Пользователь ${data.username} забанен`);
+            // Обновляем список забаненных пользователей
+            updateBannedUsersList();
+        });
+        
+        // Уведомление о разбане пользователя
+        socket.on('user_unbanned', (data) => {
+            console.log(`Пользователь ${data.username} разбанен`);
+            // Обновляем список забаненных пользователей
+            updateBannedUsersList();
+        });
+        
+        // Проверка на бан при каждом подключении
+        socket.on('check_ban', (data) => {
+            if (data.banned) {
+                const banInfo = data.banInfo || {};
+                const banDuration = banInfo.banDuration === -1 ? 
+                    'навсегда' : 
+                    formatDuration(banInfo.banDuration);
+                
+                const banExpiry = banInfo.banExpiry ? 
+                    ` до ${new Date(banInfo.banExpiry).toLocaleString()}` : 
+                    '';
+                
+                alert(`Вы забанены: ${banDuration}${banExpiry}`);
+                // Отключаем пользователя
+                if (socket) socket.disconnect();
+                // Перенаправляем на страницу логина
+                loginScreen.style.display = 'flex';
+                chatScreen.style.display = 'none';
+            }
+        });
+    }
+    
+    // Добавляем кнопку для входа в админ-панель в меню настроек
+    function addAdminLoginButton() {
+        const settingsContainer = document.querySelector('.settings-container');
+        if (!settingsContainer) return;
+        
+        // Создаем отдельную секцию для админа
+        const adminSection = document.createElement('div');
+        adminSection.className = 'settings-section admin-section';
+        adminSection.innerHTML = `
+            <h3>Администрирование</h3>
+            <button id="admin-login-button" class="admin-login-button">Войти как администратор</button>
+        `;
+        
+        // Добавляем секцию в контейнер настроек
+        settingsContainer.appendChild(adminSection);
+        
+        // Добавляем обработчик для кнопки
+        document.getElementById('admin-login-button').addEventListener('click', loginAsAdmin);
+    }
+    
+    // Модифицируем функцию initializeUI для добавления кнопки админа
+    const originalInitializeUI = window.initializeUI || initializeUI;
+    window.initializeUI = function() {
+        // Вызываем оригинальную функцию
+        if (typeof originalInitializeUI === 'function') {
+            originalInitializeUI();
+        }
+        
+        // Добавляем кнопку админа и настраиваем обработчики
+        addAdminLoginButton();
+        setupAdminSocketListeners();
+        
+        console.log('UI инициализирован с поддержкой админских функций');
+    };
 }); 

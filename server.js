@@ -196,6 +196,8 @@ const users = {}; // Хранит socketId -> username
 const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
 const rooms = new Map(); // Хранение приватных комнат
+const bannedUsers = new Map(); // Для хранения забаненных пользователей
+const admins = new Set(); // Для хранения администраторов
 
 // Класс для сообщений с расширенными атрибутами
 class Message {
@@ -284,6 +286,106 @@ function deleteImage(imagePath) {
   }
 }
 
+// Проверка, забанен ли пользователь
+function isUserBanned(username) {
+  if (!bannedUsers.has(username)) return false;
+  
+  const banInfo = bannedUsers.get(username);
+  // Если бан навсегда (duration = -1)
+  if (banInfo.banDuration === -1) return true;
+  
+  // Если срок бана истек, удаляем запись
+  if (banInfo.banExpiry && Date.now() > banInfo.banExpiry) {
+    bannedUsers.delete(username);
+    console.log(`Срок бана для пользователя ${username} истек`);
+    return false;
+  }
+  
+  return true;
+}
+
+// Функция для бана пользователя
+function banUser(username, duration) {
+  // Если пользователь уже забанен, обновляем информацию
+  let banExpiry = null;
+  if (duration !== -1) {
+    banExpiry = Date.now() + duration;
+  }
+  
+  // Сохраняем информацию о бане
+  bannedUsers.set(username, {
+    username,
+    banDuration: duration,
+    banExpiry,
+    bannedAt: Date.now()
+  });
+  
+  // Если пользователь онлайн, отключаем его
+  if (activeUsers[username]) {
+    const socketId = activeUsers[username].socketId;
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket) {
+      // Отправляем уведомление о бане
+      socket.emit('check_ban', { banned: true, banInfo: bannedUsers.get(username) });
+      // Отключаем пользователя
+      socket.disconnect();
+    }
+    
+    // Удаляем из активных пользователей
+    delete activeUsers[username];
+  }
+  
+  console.log(`Пользователь ${username} забанен на ${duration === -1 ? 'навсегда' : `${duration}мс`}`);
+  return true;
+}
+
+// Функция для разбана пользователя
+function unbanUser(username) {
+  if (!bannedUsers.has(username)) {
+    return false;
+  }
+  
+  // Удаляем информацию о бане
+  bannedUsers.delete(username);
+  console.log(`Пользователь ${username} разбанен`);
+  return true;
+}
+
+// Получение списка забаненных пользователей
+function getBannedUsers() {
+  // Преобразуем Map в массив для отправки
+  return Array.from(bannedUsers.values());
+}
+
+// Получение списка приватных комнат
+function getPrivateRooms() {
+  const roomsList = [];
+  
+  rooms.forEach((room, roomId) => {
+    roomsList.push({
+      id: roomId,
+      name: room.name,
+      creator: room.creator,
+      members: Array.from(room.members)
+    });
+  });
+  
+  return roomsList;
+}
+
+// Получение сообщений комнаты для админа
+function getRoomMessagesForAdmin(roomId) {
+  if (!rooms.has(roomId)) {
+    return { messages: [], roomName: 'Комната не найдена' };
+  }
+  
+  const room = rooms.get(roomId);
+  return {
+    messages: room.messages,
+    roomName: room.name
+  };
+}
+
 // Для отладки подключений
 io.engine.on("connection_error", (err) => {
   console.log(`Ошибка подключения Socket.IO: ${err.code} - ${err.message}`);
@@ -297,6 +399,12 @@ io.on('connection', (socket) => {
 
   // Регистрация пользователя через старый метод (совместимость)
   socket.on('register', (username) => {
+    // Проверяем, не забанен ли пользователь
+    if (isUserBanned(username)) {
+      socket.emit('check_ban', { banned: true, banInfo: bannedUsers.get(username) });
+      return;
+    }
+    
     users[socket.id] = username;
     activeUsers[username] = { socketId: socket.id, displayName: username };
     
@@ -322,6 +430,16 @@ io.on('connection', (socket) => {
         success: false, 
         message: 'Отсутствуют обязательные поля' 
       });
+      return;
+    }
+    
+    // Проверяем, не забанен ли пользователь
+    if (isUserBanned(username)) {
+      socket.emit('registration_result', { 
+        success: false, 
+        message: 'Пользователь забанен' 
+      });
+      socket.emit('check_ban', { banned: true, banInfo: bannedUsers.get(username) });
       return;
     }
     
@@ -362,6 +480,16 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // Проверяем, не забанен ли пользователь
+    if (isUserBanned(username)) {
+      socket.emit('auth_result', { 
+        success: false, 
+        message: 'Пользователь забанен' 
+      });
+      socket.emit('check_ban', { banned: true, banInfo: bannedUsers.get(username) });
+      return;
+    }
+    
     // Проверяем пользователя
     const authResult = authenticateUser(username, password);
     
@@ -396,6 +524,135 @@ io.on('connection', (socket) => {
     socket.emit('auth_result', authResult);
   });
 
+  // Авторизация как администратор
+  socket.on('admin_login', (data) => {
+    const username = data.username || users[socket.id];
+    
+    if (!username) {
+      socket.emit('error', { message: 'Вы не авторизованы' });
+      return;
+    }
+    
+    // Добавляем пользователя в список администраторов
+    admins.add(username);
+    
+    console.log(`Пользователь ${username} авторизован как администратор`);
+    
+    // Отправляем обновленные списки забаненных пользователей и комнат
+    socket.emit('banned_users_list', getBannedUsers());
+    socket.emit('private_rooms_list', getPrivateRooms());
+  });
+
+  // Получение списка забаненных пользователей
+  socket.on('get_banned_users', () => {
+    const username = users[socket.id];
+    
+    // Проверяем, является ли пользователь администратором
+    if (!username || !admins.has(username)) {
+      socket.emit('error', { message: 'У вас нет прав администратора' });
+      return;
+    }
+    
+    socket.emit('banned_users_list', getBannedUsers());
+  });
+
+  // Получение списка приватных комнат
+  socket.on('get_private_rooms', () => {
+    const username = users[socket.id];
+    
+    // Проверяем, является ли пользователь администратором
+    if (!username || !admins.has(username)) {
+      socket.emit('error', { message: 'У вас нет прав администратора' });
+      return;
+    }
+    
+    socket.emit('private_rooms_list', getPrivateRooms());
+  });
+
+  // Бан пользователя
+  socket.on('ban_user', (data) => {
+    const adminUsername = users[socket.id];
+    const { username, duration } = data;
+    
+    // Проверяем, является ли пользователь администратором
+    if (!adminUsername || !admins.has(adminUsername)) {
+      socket.emit('error', { message: 'У вас нет прав администратора' });
+      return;
+    }
+    
+    if (!username) {
+      socket.emit('error', { message: 'Необходимо указать имя пользователя' });
+      return;
+    }
+    
+    // Нельзя банить администратора
+    if (admins.has(username)) {
+      socket.emit('error', { message: 'Нельзя забанить администратора' });
+      return;
+    }
+    
+    // Баним пользователя
+    const banResult = banUser(username, duration);
+    
+    if (banResult) {
+      socket.emit('user_banned', { username, duration });
+      // Обновляем список забаненных пользователей для всех админов
+      updateAdminsWithBannedList();
+    } else {
+      socket.emit('error', { message: 'Ошибка при бане пользователя' });
+    }
+  });
+
+  // Разбан пользователя
+  socket.on('unban_user', (data) => {
+    const adminUsername = users[socket.id];
+    const { username } = data;
+    
+    // Проверяем, является ли пользователь администратором
+    if (!adminUsername || !admins.has(adminUsername)) {
+      socket.emit('error', { message: 'У вас нет прав администратора' });
+      return;
+    }
+    
+    if (!username) {
+      socket.emit('error', { message: 'Необходимо указать имя пользователя' });
+      return;
+    }
+    
+    // Разбаниваем пользователя
+    const unbanResult = unbanUser(username);
+    
+    if (unbanResult) {
+      socket.emit('user_unbanned', { username });
+      // Обновляем список забаненных пользователей для всех админов
+      updateAdminsWithBannedList();
+    } else {
+      socket.emit('error', { message: 'Пользователь не найден или не забанен' });
+    }
+  });
+
+  // Получение сообщений приватной комнаты для админа
+  socket.on('get_room_messages_admin', (data) => {
+    const adminUsername = users[socket.id];
+    const { roomId } = data;
+    
+    // Проверяем, является ли пользователь администратором
+    if (!adminUsername || !admins.has(adminUsername)) {
+      socket.emit('error', { message: 'У вас нет прав администратора' });
+      return;
+    }
+    
+    if (!roomId) {
+      socket.emit('error', { message: 'Необходимо указать ID комнаты' });
+      return;
+    }
+    
+    // Получаем сообщения комнаты
+    const roomData = getRoomMessagesForAdmin(roomId);
+    
+    socket.emit('room_messages_admin', roomData);
+  });
+
   // Создание приватной комнаты
   socket.on('create_room', ({ roomId, roomName, creator }) => {
     if (rooms.has(roomId)) {
@@ -412,6 +669,9 @@ io.on('connection', (socket) => {
     // Оповещаем всех о создании комнаты
     io.emit('room_created', { roomId, roomName, creator });
     
+    // Обновляем список приватных комнат для всех админов
+    updateAdminsWithRoomsList();
+    
     console.log(`Создана новая комната: ${roomName} (ID: ${roomId})`);
   });
 
@@ -427,6 +687,13 @@ io.on('connection', (socket) => {
     const username = users[socket.id];
     if (!username) {
       socket.emit('error', { message: 'Вы не авторизованы' });
+      return;
+    }
+    
+    // Проверяем, имеет ли пользователь доступ к комнате
+    // Админы имеют доступ ко всем комнатам
+    if (!room.members.has(username) && !admins.has(username) && room.creator !== username) {
+      socket.emit('error', { message: 'У вас нет доступа к этой комнате' });
       return;
     }
 
@@ -657,6 +924,32 @@ io.on('connection', (socket) => {
     
     console.log(`Пользователь ${username} (${displayName}) покинул комнату ${room.name}`);
   });
+
+  // Функция для обновления списка забаненных пользователей для всех админов
+  function updateAdminsWithBannedList() {
+    admins.forEach(adminUsername => {
+      if (activeUsers[adminUsername]) {
+        const adminSocketId = activeUsers[adminUsername].socketId;
+        const adminSocket = io.sockets.sockets.get(adminSocketId);
+        if (adminSocket) {
+          adminSocket.emit('banned_users_list', getBannedUsers());
+        }
+      }
+    });
+  }
+
+  // Функция для обновления списка приватных комнат для всех админов
+  function updateAdminsWithRoomsList() {
+    admins.forEach(adminUsername => {
+      if (activeUsers[adminUsername]) {
+        const adminSocketId = activeUsers[adminUsername].socketId;
+        const adminSocket = io.sockets.sockets.get(adminSocketId);
+        if (adminSocket) {
+          adminSocket.emit('private_rooms_list', getPrivateRooms());
+        }
+      }
+    });
+  }
 });
 
 // Обработка SIGTERM и SIGINT для корректного завершения в Railway
