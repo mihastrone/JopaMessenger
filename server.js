@@ -506,82 +506,64 @@ io.on('connection', (socket) => {
     socket.emit('message-history', messages);
   });
 
-  // Модифицированное получение сообщения
-  socket.on('message', (messageData) => {
-    const messageId = Date.now();
-    const username = users[socket.id];
+  // Обработка сообщений
+  socket.on('message', (message) => {
+    console.log('Получено сообщение от клиента:', message.username, 
+              'для комнаты:', message.roomId, 
+              'текст:', message.text && message.text.substring(0, 30) + (message.text && message.text.length > 30 ? '...' : ''),
+              'с изображением:', !!message.image);
     
-    if (!username) {
-      socket.emit('error', { message: 'Пользователь не зарегистрирован' });
-      return;
+    // Проверяем, авторизован ли пользователь
+    const userIndex = activeUsers.findIndex(u => u.socketId === socket.id);
+    if (userIndex === -1) {
+        console.error('Неавторизованный пользователь пытается отправить сообщение:', socket.id);
+        socket.emit('error-message', { message: 'Вы не авторизованы' });
+        return;
     }
-
-    // Получаем отображаемое имя пользователя
-    const displayName = activeUsers[username]?.displayName || username;
     
-    let imagePath = null;
-
-    // Проверяем размер сообщения с изображением
-    if (messageData.hasImage && messageData.image) {
-      const imageSizeInBytes = calculateBase64Size(messageData.image);
-      const maxSizeInBytes = 1024 * 1024; // 1MB максимальный размер
-      
-      if (imageSizeInBytes > maxSizeInBytes) {
-        socket.emit('error', { message: 'Изображение слишком большое. Максимальный размер 1MB' });
-        return;
-      }
-
-      // Сохраняем изображение на диск
-      try {
-        imagePath = saveImage(messageData.image, messageId);
-        console.log(`Изображение сохранено: ${imagePath}`);
-      } catch (error) {
-        console.error('Ошибка при сохранении изображения:', error);
-        socket.emit('error', { message: 'Не удалось сохранить изображение' });
-        return;
-      }
+    const user = activeUsers[userIndex];
+    
+    // Дополняем сообщение информацией о пользователе
+    message.username = user.username;
+    message.displayName = user.displayName;
+    
+    if (!message.timestamp) {
+        message.timestamp = Date.now();
     }
-
-    // Создаем объект сообщения
-    const message = new Message(
-      messageId,
-      username,
-      messageData.text,
-      new Date().toISOString(),
-      messageData.roomId,
-      false,
-      DEFAULT_MESSAGE_LIFETIME,
-      imagePath,
-      displayName // Добавляем отображаемое имя
-    );
-
-    if (messageData.roomId) {
-      // Сообщение для приватной комнаты
-      const room = rooms.get(messageData.roomId);
-      if (!room) {
-        socket.emit('error', { message: 'Комната не найдена' });
-        return;
-      }
-
-      if (!room.members.has(username)) {
-        socket.emit('error', { message: 'Вы не являетесь участником этой комнаты' });
-        return;
-      }
-
-      // Добавляем сообщение в историю комнаты
-      room.messages.push(message);
-      
-      // Планируем удаление сообщения, если включено автоудаление в комнате
-      if (room.autoDeleteEnabled) {
-        scheduleMessageDeletion(messageId, room.messageLifetime);
-      }
-
-      // Отправляем сообщение только участникам комнаты
-      io.to(messageData.roomId).emit('room_message', message);
+    
+    // Проверяем наличие изображения
+    if (message.hasImage && message.image) {
+        // Если изображение передано в base64
+        if (message.image.startsWith('data:image')) {
+            const imageData = message.image.split(';base64,').pop();
+            const fileExtension = message.image.split(';')[0].split('/')[1];
+            const fileName = `${Date.now()}_${Math.floor(Math.random() * 10000)}.${fileExtension}`;
+            const filePath = path.join(__dirname, 'uploads', fileName);
+            
+            // Сохраняем изображение
+            try {
+                fs.writeFileSync(filePath, Buffer.from(imageData, 'base64'));
+                message.image = `/uploads/${fileName}`;
+            } catch (error) {
+                console.error('Ошибка при сохранении изображения:', error);
+                message.image = null;
+                message.hasImage = false;
+            }
+        }
+    }
+    
+    // Сохраняем сообщение в базе данных
+    saveMessage(message);
+    
+    // Отправляем сообщение всем клиентам в зависимости от типа (общий чат или комната)
+    if (message.roomId && message.roomId !== 'general') {
+        // Сообщение для приватной комнаты
+        console.log(`Отправка сообщения всем пользователям в комнате ${message.roomId}`);
+        io.to(message.roomId).emit('room_message', message);
     } else {
-      // Сообщение для общего чата
-      messages.push(message);
-      io.emit('new-message', message);
+        // Сообщение для общего чата
+        console.log('Отправка сообщения всем пользователям в общем чате');
+        io.emit('new-message', message);
     }
   });
 

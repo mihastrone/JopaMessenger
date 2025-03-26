@@ -358,6 +358,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Получение истории сообщений
         socket.on('message-history', (messages) => {
+            console.log('Получена история сообщений:', messages.length);
+            const messagesContainer = document.getElementById('messages-container');
+            if (!messagesContainer) {
+                console.error('Контейнер сообщений не найден при загрузке истории');
+                return;
+            }
+            
             messagesContainer.innerHTML = '';
             
             // Кэшируем сообщения общего чата
@@ -365,34 +372,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             messages.forEach(message => {
                 const element = addMessageToUI(message);
-                messageElements.push(element.cloneNode(true));
+                if (element) {
+                    messageElements.push(element.cloneNode(true));
+                }
             });
             
             cachedMessages.set('general', messageElements);
             scrollToBottom();
-        });
-        
-        // Получение нового сообщения
-        socket.on('new-message', (message) => {
-            console.log('Получено новое сообщение:', message);
-            const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
-            
-            const messageElement = addMessageToUI(message);
-            
-            // Если это сообщение для общего чата, добавляем его в кэш
-            if (currentRoom === 'general' && messageElement) {
-                if (!cachedMessages.has('general')) {
-                    cachedMessages.set('general', []);
-                }
-                const generalMessages = cachedMessages.get('general');
-                generalMessages.push(messageElement.cloneNode(true));
-                cachedMessages.set('general', generalMessages);
-            }
-            
-            // Прокручиваем вниз только если пользователь был внизу
-            if (shouldScrollToBottom || message.username === username) {
-                scrollToBottom();
-            }
         });
         
         // Обновление списка пользователей
@@ -476,28 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveSettings();
             updateRoomsList();
         });
-        
-        // Сообщения в комнате
-        socket.on('room_message', (message) => {
-            console.log('Получено сообщение для комнаты:', message);
-            if (message.roomId === currentRoom) {
-                const messageElement = addMessageToUI(message);
-                
-                // Кэшируем сообщение для этой комнаты
-                if (messageElement) {
-                    if (!cachedMessages.has(currentRoom)) {
-                        cachedMessages.set(currentRoom, []);
-                    }
-                    const roomMessages = cachedMessages.get(currentRoom);
-                    roomMessages.push(messageElement.cloneNode(true));
-                    cachedMessages.set(currentRoom, roomMessages);
-                }
-                
-                // Прокручиваем вниз
-                scrollToBottom();
-            }
-        });
-        
+
         // Получение истории сообщений комнаты
         socket.on('room_messages', (messages) => {
             console.log('Получена история сообщений комнаты:', messages.length, 'сообщений');
@@ -535,6 +500,78 @@ document.addEventListener('DOMContentLoaded', () => {
                 addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
             }
         });
+        
+        // Получение нового сообщения
+        socket.on('new-message', (message) => {
+            console.log('Получено новое сообщение от сервера:', message);
+            
+            // Проверяем, что сообщение существует и содержит необходимые поля
+            if (!message || typeof message !== 'object') {
+                console.error('Получено неверное сообщение:', message);
+                return;
+            }
+            
+            // Проверяем, находимся ли мы в общем чате
+            if (currentRoom !== 'general') {
+                console.log('Игнорируем сообщение для общего чата, т.к. находимся в комнате:', currentRoom);
+                return;
+            }
+            
+            const messageElement = addMessageToUI(message);
+            console.log('Результат добавления сообщения в UI:', messageElement ? 'успешно' : 'ошибка');
+            
+            // Если это сообщение для общего чата, добавляем его в кэш
+            if (messageElement) {
+                if (!cachedMessages.has('general')) {
+                    cachedMessages.set('general', []);
+                    console.log('Создана новая коллекция кэша для общего чата');
+                }
+                const generalMessages = cachedMessages.get('general');
+                generalMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set('general', generalMessages);
+                console.log('Сообщение добавлено в кэш общего чата, текущий размер:', generalMessages.length);
+            }
+        });
+        
+        // Сообщения в комнате
+        socket.on('room_message', (message) => {
+            console.log('Получено сообщение для комнаты от сервера:', message);
+            
+            // Проверяем, что сообщение существует и содержит необходимые поля
+            if (!message || typeof message !== 'object') {
+                console.error('Получено неверное сообщение для комнаты:', message);
+                return;
+            }
+            
+            // Проверяем, что сообщение предназначено для текущей комнаты
+            if (message.roomId !== currentRoom) {
+                console.log(`Игнорируем сообщение для комнаты ${message.roomId}, т.к. находимся в ${currentRoom}`);
+                return;
+            }
+            
+            const messageElement = addMessageToUI(message);
+            console.log('Результат добавления сообщения комнаты в UI:', messageElement ? 'успешно' : 'ошибка');
+            
+            // Кэшируем сообщение для этой комнаты
+            if (messageElement) {
+                if (!cachedMessages.has(currentRoom)) {
+                    cachedMessages.set(currentRoom, []);
+                    console.log(`Создана новая коллекция кэша для комнаты ${currentRoom}`);
+                }
+                const roomMessages = cachedMessages.get(currentRoom);
+                roomMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set(currentRoom, roomMessages);
+                console.log(`Сообщение добавлено в кэш комнаты ${currentRoom}, текущий размер:`, roomMessages.length);
+            }
+        });
+        
+        // Принудительная отправка тестового сообщения для проверки работы чата
+        setTimeout(() => {
+            if (isLoggedIn && socket.connected) {
+                console.log('Отправка тестового системного сообщения');
+                addSystemMessageToUI('Подключение проверено, чат работает');
+            }
+        }, 5000);
     }
     
     // Регистрация нового пользователя
@@ -806,6 +843,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Получение истории сообщений
         socket.on('message-history', (messages) => {
+            console.log('Получена история сообщений:', messages.length);
+            const messagesContainer = document.getElementById('messages-container');
+            if (!messagesContainer) {
+                console.error('Контейнер сообщений не найден при загрузке истории');
+                return;
+            }
+            
             messagesContainer.innerHTML = '';
             
             // Кэшируем сообщения общего чата
@@ -813,34 +857,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             messages.forEach(message => {
                 const element = addMessageToUI(message);
-                messageElements.push(element.cloneNode(true));
+                if (element) {
+                    messageElements.push(element.cloneNode(true));
+                }
             });
             
             cachedMessages.set('general', messageElements);
             scrollToBottom();
-        });
-        
-        // Получение нового сообщения
-        socket.on('new-message', (message) => {
-            console.log('Получено новое сообщение:', message);
-            const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
-            
-            const messageElement = addMessageToUI(message);
-            
-            // Если это сообщение для общего чата, добавляем его в кэш
-            if (currentRoom === 'general' && messageElement) {
-                if (!cachedMessages.has('general')) {
-                    cachedMessages.set('general', []);
-                }
-                const generalMessages = cachedMessages.get('general');
-                generalMessages.push(messageElement.cloneNode(true));
-                cachedMessages.set('general', generalMessages);
-            }
-            
-            // Прокручиваем вниз только если пользователь был внизу
-            if (shouldScrollToBottom || message.username === username) {
-                scrollToBottom();
-            }
         });
         
         // Обновление списка пользователей
@@ -924,28 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveSettings();
             updateRoomsList();
         });
-        
-        // Сообщения в комнате
-        socket.on('room_message', (message) => {
-            console.log('Получено сообщение для комнаты:', message);
-            if (message.roomId === currentRoom) {
-                const messageElement = addMessageToUI(message);
-                
-                // Кэшируем сообщение для этой комнаты
-                if (messageElement) {
-                    if (!cachedMessages.has(currentRoom)) {
-                        cachedMessages.set(currentRoom, []);
-                    }
-                    const roomMessages = cachedMessages.get(currentRoom);
-                    roomMessages.push(messageElement.cloneNode(true));
-                    cachedMessages.set(currentRoom, roomMessages);
-                }
-                
-                // Прокручиваем вниз
-                scrollToBottom();
-            }
-        });
-        
+
         // Получение истории сообщений комнаты
         socket.on('room_messages', (messages) => {
             console.log('Получена история сообщений комнаты:', messages.length, 'сообщений');
@@ -983,16 +985,102 @@ document.addEventListener('DOMContentLoaded', () => {
                 addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
             }
         });
+        
+        // Получение нового сообщения
+        socket.on('new-message', (message) => {
+            console.log('Получено новое сообщение от сервера:', message);
+            
+            // Проверяем, что сообщение существует и содержит необходимые поля
+            if (!message || typeof message !== 'object') {
+                console.error('Получено неверное сообщение:', message);
+                return;
+            }
+            
+            // Проверяем, находимся ли мы в общем чате
+            if (currentRoom !== 'general') {
+                console.log('Игнорируем сообщение для общего чата, т.к. находимся в комнате:', currentRoom);
+                return;
+            }
+            
+            const messageElement = addMessageToUI(message);
+            console.log('Результат добавления сообщения в UI:', messageElement ? 'успешно' : 'ошибка');
+            
+            // Если это сообщение для общего чата, добавляем его в кэш
+            if (messageElement) {
+                if (!cachedMessages.has('general')) {
+                    cachedMessages.set('general', []);
+                    console.log('Создана новая коллекция кэша для общего чата');
+                }
+                const generalMessages = cachedMessages.get('general');
+                generalMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set('general', generalMessages);
+                console.log('Сообщение добавлено в кэш общего чата, текущий размер:', generalMessages.length);
+            }
+        });
+        
+        // Сообщения в комнате
+        socket.on('room_message', (message) => {
+            console.log('Получено сообщение для комнаты от сервера:', message);
+            
+            // Проверяем, что сообщение существует и содержит необходимые поля
+            if (!message || typeof message !== 'object') {
+                console.error('Получено неверное сообщение для комнаты:', message);
+                return;
+            }
+            
+            // Проверяем, что сообщение предназначено для текущей комнаты
+            if (message.roomId !== currentRoom) {
+                console.log(`Игнорируем сообщение для комнаты ${message.roomId}, т.к. находимся в ${currentRoom}`);
+                return;
+            }
+            
+            const messageElement = addMessageToUI(message);
+            console.log('Результат добавления сообщения комнаты в UI:', messageElement ? 'успешно' : 'ошибка');
+            
+            // Кэшируем сообщение для этой комнаты
+            if (messageElement) {
+                if (!cachedMessages.has(currentRoom)) {
+                    cachedMessages.set(currentRoom, []);
+                    console.log(`Создана новая коллекция кэша для комнаты ${currentRoom}`);
+                }
+                const roomMessages = cachedMessages.get(currentRoom);
+                roomMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set(currentRoom, roomMessages);
+                console.log(`Сообщение добавлено в кэш комнаты ${currentRoom}, текущий размер:`, roomMessages.length);
+            }
+        });
+        
+        // Принудительная отправка тестового сообщения для проверки работы чата
+        setTimeout(() => {
+            if (isLoggedIn && socket.connected) {
+                console.log('Отправка тестового системного сообщения');
+                addSystemMessageToUI('Подключение проверено, чат работает');
+            }
+        }, 5000);
     }
-
+    
     // Модифицированная функция добавления сообщения в UI
     function addMessageToUI(message) {
         console.log('Добавление сообщения в UI:', message);
+        
+        if (!message) {
+            console.error('Получено пустое сообщение');
+            return null;
+        }
+        
+        // Найдем контейнер сообщений
+        const msgContainer = document.getElementById('messages-container');
+        if (!msgContainer) {
+            console.error('Контейнер сообщений не найден');
+            return null;
+        }
+        
+        // Создаем новый элемент сообщения
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
-        messageElement.id = `message-${message.timestamp}`;
+        messageElement.id = `message-${message.timestamp || Date.now()}`;
         
-        const formattedMessage = formatMessage(message.text);
+        const formattedMessage = formatMessage(message.text || '');
         
         let imageHtml = '';
         if (message.image) {
@@ -1013,31 +1101,57 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.classList.add(isOwnMessage ? 'own' : 'other');
         
         // Используем displayName если он есть, или username в качестве запасного варианта
-        const senderName = message.displayName || message.username;
+        const senderName = message.displayName || message.username || 'Аноним';
         
         messageElement.innerHTML = `
             <div class="message-header">
                 <span class="username">${escapeHtml(senderName)}</span>
-                <span class="timestamp">${new Date(message.timestamp).toLocaleTimeString()}</span>
+                <span class="timestamp">${new Date(message.timestamp || Date.now()).toLocaleTimeString()}</span>
             </div>
             <div class="message-content">${formattedMessage}</div>
             ${imageHtml}
-            ${currentRoom !== 'general' ? `<div id="countdown-${message.timestamp}" class="countdown"></div>` : ''}
+            ${currentRoom !== 'general' ? `<div id="countdown-${message.timestamp || Date.now()}" class="countdown"></div>` : ''}
         `;
         
-        messagesContainer.appendChild(messageElement);
+        // Напрямую добавляем в DOM
+        msgContainer.appendChild(messageElement);
+        console.log('Сообщение добавлено в DOM, текущее количество сообщений:', msgContainer.children.length);
         
         // Настраиваем автоудаление только для комнат, не для общего чата
         if (currentRoom !== 'general' && rooms.get(currentRoom)?.autoDeleteEnabled) {
-            setupMessageDeletion(message.timestamp);
+            setupMessageDeletion(message.timestamp || Date.now());
         }
         
-        if (shouldScrollToBottom) {
-            scrollToBottom();
-        }
+        // Прокручиваем чат вниз
+        scrollToBottom();
         
         return messageElement;
     }
+    
+    // Обработчики сообщений теперь будут глобально доступны
+    window.addMessageToUI = addMessageToUI;
+    
+    // Усиленная функция прокрутки чата вниз
+    function scrollToBottom() {
+        console.log('Вызвана функция прокрутки чата вниз');
+        const messagesContainer = document.getElementById('messages-container');
+        if (!messagesContainer) {
+            console.error('Элемент messages-container не найден при попытке прокрутки');
+            return;
+        }
+        
+        // Попытка прокрутки сразу
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+        // Запасной вариант с задержкой 
+        setTimeout(() => {
+            if (messagesContainer) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                console.log('Выполнена прокрутка чата вниз (с задержкой)');
+            }
+        }, 100);
+    }
+    window.scrollToBottom = scrollToBottom;
     
     // Форматирование сообщения (обработка ссылок)
     function formatMessage(text) {
@@ -1136,19 +1250,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             userList.appendChild(userElement);
         });
-    }
-
-    // Прокрутка чата вниз
-    function scrollToBottom() {
-        // Задержка для корректной работы скролла после рендеринга сообщения
-        setTimeout(() => {
-            if (messagesContainer) {
-                messagesContainer.scrollTo({
-                    top: messagesContainer.scrollHeight,
-                    behavior: 'smooth'
-                });
-            }
-        }, 0);
     }
 
     // Экранирование HTML
