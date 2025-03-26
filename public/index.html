@@ -36,6 +36,47 @@
             };
         }
     </script>
+    <!-- Добавляем скрипт для очистки кэша при загрузке -->
+    <script>
+        // Версия приложения для контроля кэша
+        window.APP_VERSION = '1.0.' + Date.now();
+        
+        // Очистка кэша при загрузке
+        if (localStorage.getItem('cache_cleared_at') !== window.APP_VERSION) {
+            console.log('Очищаем кэш приложения...');
+            
+            // Очищаем кэш сообщений и настроек
+            localStorage.removeItem('cached_messages');
+            localStorage.removeItem('chat_rooms');
+            
+            // Запоминаем, что кэш очищен для этой версии
+            localStorage.setItem('cache_cleared_at', window.APP_VERSION);
+        }
+        
+        // Предотвращение кэширования
+        document.head.innerHTML += '<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">';
+        document.head.innerHTML += '<meta http-equiv="Pragma" content="no-cache">';
+        document.head.innerHTML += '<meta http-equiv="Expires" content="0">';
+    </script>
+    
+    <script>
+        // Глобальный обработчик ошибок
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('Глобальная ошибка:', message, 'Источник:', source, 'Строка:', lineno, 'Колонка:', colno, 'Объект ошибки:', error);
+            return false;
+        };
+        
+        // Создаем глобальный объект для хранения состояния
+        window.JopaApp = {
+            socket: null,
+            username: '',
+            displayName: '',
+            currentRoom: 'general',
+            isLoggedIn: false,
+            rooms: new Map(),
+            debug: true // Включаем режим отладки
+        };
+    </script>
 </head>
 <body>
     <div class="app">

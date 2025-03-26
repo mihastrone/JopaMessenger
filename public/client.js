@@ -165,14 +165,20 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConnectionStatus('connecting');
         
         try {
-            // Оптимизированные настройки Socket.IO для Railway
+            // Отключаем существующее соединение если есть
+            if (socket && socket.connected) {
+                console.log('Закрываем предыдущее соединение');
+                socket.disconnect();
+            }
+            
+            // Оптимизированные настройки Socket.IO
             socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 reconnectionAttempts: 10,
                 reconnectionDelay: 1000,
                 timeout: 10000,
                 autoConnect: true,
-                // Включаем сжатие для Railway
+                forceNew: true, // Важно: создаем новое соединение
                 compress: true
             });
             
@@ -181,12 +187,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем информацию о сервере
             const serverName = window.location.hostname;
-            // Проверяем, является ли хост Railway-доменом
             const isRailway = serverName.includes('railway.app') || 
-                             serverName.includes('up.railway.app');
+                            serverName.includes('up.railway.app');
                 
             connectedServer.textContent = isRailway ? 'Railway Cloud' : 
-                                         (serverName === 'localhost' ? 'локальный сервер' : serverName);
+                                        (serverName === 'localhost' ? 'локальный сервер' : serverName);
             
             // Обработчики событий Socket.io
             setupSocketListeners();
@@ -220,138 +225,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Регистрация нового пользователя
-    function registerUser() {
-        const username = registerUsername.value.trim();
-        const displayName = registerDisplayName.value.trim();
-        const password = registerPassword.value;
-        const passwordConfirm = registerPasswordConfirm.value;
-        
-        // Проверка введенных данных
-        if (!username) {
-            alert('Пожалуйста, введите логин');
-            return;
-        }
-        
-        if (!displayName) {
-            alert('Пожалуйста, введите отображаемое имя');
-            return;
-        }
-        
-        if (!password) {
-            alert('Пожалуйста, введите пароль');
-            return;
-        }
-        
-        if (password !== passwordConfirm) {
-            alert('Пароли не совпадают');
-            return;
-        }
-        
-        // Автоматически определяем URL сервера (для Railway)
-        const serverUrl = window.location.origin;
-        
-        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
-        console.log('Подключение к серверу для регистрации:', serverUrl);
-        
-        try {
-            // Оптимизированные настройки Socket.IO для Railway
-            socket = io(serverUrl, {
-                transports: ['websocket', 'polling'],
-                reconnectionAttempts: 10,
-                reconnectionDelay: 1000,
-                timeout: 10000,
-                autoConnect: true,
-                // Включаем сжатие для Railway
-                compress: true
-            });
-            
-            // Сохраняем в глобальную переменную
-            window.socket = socket;
-            
-            // Обновляем информацию о сервере
-            const serverName = window.location.hostname;
-            // Проверяем, является ли хост Railway-доменом
-            const isRailway = serverName.includes('railway.app') || 
-                             serverName.includes('up.railway.app');
-                             
-            connectedServer.textContent = isRailway ? 'Railway Cloud' : 
-                                         (serverName === 'localhost' ? 'локальный сервер' : serverName);
-            
-            // Обработчики событий Socket.io
-            setupSocketListeners();
-            
-            // Отправляем запрос на регистрацию
-            socket.emit('register_user', { username, displayName, password });
-            
-            return true;
-        } catch (error) {
-            console.error('Ошибка при создании Socket.IO клиента:', error);
-            connectionStatus.innerHTML = 
-                `<span style="color:red">Ошибка: ${error.message}</span>`;
-            return false;
-        }
-    }
-    
-    // Обработчики событий авторизации
-    loginButton.addEventListener('click', () => {
-        const username = loginUsername.value.trim();
-        const password = loginPassword.value;
-        
-        if (!username) {
-            alert('Пожалуйста, введите логин');
-            return;
-        }
-        
-        if (!password) {
-            alert('Пожалуйста, введите пароль');
-            return;
-        }
-        
-        authenticateUser(username, password);
-    });
-    
-    registerButton.addEventListener('click', registerUser);
-    
-    // Обработчики нажатия Enter
-    loginUsername.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            loginPassword.focus();
-        }
-    });
-    
-    loginPassword.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            loginButton.click();
-        }
-    });
-    
-    registerUsername.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerDisplayName.focus();
-        }
-    });
-    
-    registerDisplayName.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerPassword.focus();
-        }
-    });
-    
-    registerPassword.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerPasswordConfirm.focus();
-        }
-    });
-    
-    registerPasswordConfirm.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerButton.click();
-        }
-    });
-    
     // Настройка обработчиков событий сокета
     function setupSocketListeners() {
+        console.log("Настройка обработчиков сокетов");
+        if (!socket) {
+            console.error("Ошибка: socket не инициализирован");
+            return;
+        }
+        
+        // Отключаем предыдущие обработчики, чтобы избежать дублирования
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('auth_result');
+        socket.off('registration_result');
+        socket.off('message-history');
+        socket.off('new-message');
+        socket.off('user-list');
+        socket.off('system-message');
+        socket.off('room_created');
+        socket.off('room_joined');
+        socket.off('room_left');
+        socket.off('room_deleted');
+        socket.off('room_message');
+        socket.off('user_joined_room');
+        socket.off('user_left_room');
+        socket.off('room_messages');
+        
         // Подключение к серверу
         socket.on('connect', () => {
             console.log('Подключено к серверу');
@@ -438,16 +337,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Тест подключения
-        socket.on('connection-test', (data) => {
-            console.log('Тест подключения:', data);
-        });
-
-        // Обработка ошибок подключения
-        socket.on('connect_error', (error) => {
-            console.error('Ошибка подключения:', error);
-        });
-        
         // Отключение от сервера
         socket.on('disconnect', (reason) => {
             console.log('Отключено от сервера:', reason);
@@ -466,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     `<span style="color:orange">Соединение потеряно. Повторное подключение...</span>`;
             }
         });
-
+        
         // Получение истории сообщений
         socket.on('message-history', (messages) => {
             messagesContainer.innerHTML = '';
@@ -482,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cachedMessages.set('general', messageElements);
             scrollToBottom();
         });
-
+        
         // Получение нового сообщения
         socket.on('new-message', (message) => {
             console.log('Получено новое сообщение:', message);
@@ -505,18 +394,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollToBottom();
             }
         });
-
+        
         // Обновление списка пользователей
         socket.on('user-list', (users) => {
             updateUserList(users);
         });
-
+        
         // Системные сообщения
         socket.on('system-message', (message) => {
             addSystemMessageToUI(message);
             scrollToBottom();
         });
-
+        
         // Обработчики событий комнат
         socket.on('room_created', ({ roomId, roomName, creator }) => {
             console.log('Комната создана:', roomId, roomName, creator);
@@ -544,18 +433,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
+        // Обработка присоединения к комнате
         socket.on('room_joined', ({ roomId, roomName }) => {
+            console.log('Вы присоединились к комнате:', roomId, roomName);
             // Сообщение будет добавлено в обработчике нажатия кнопки
         });
         
+        // Обработка выхода из комнаты
         socket.on('room_left', ({ roomId, roomName }) => {
+            console.log('Вы вышли из комнаты:', roomId, roomName);
             // Сообщение будет добавлено в обработчике нажатия кнопки
         });
         
+        // Удаление комнаты
         socket.on('room_deleted', ({ roomId, roomName }) => {
+            console.log('Комната удалена:', roomId, roomName);
             addSystemMessageToUI(`Комната удалена: ${roomName}`);
+            
             if (currentRoom === roomId) {
                 currentRoom = 'general';
+                window.currentRoom = 'general';
                 messagesContainer.innerHTML = '';
                 
                 // Загружаем сообщения общего чата
@@ -580,6 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateRoomsList();
         });
         
+        // Сообщения в комнате
         socket.on('room_message', (message) => {
             console.log('Получено сообщение для комнаты:', message);
             if (message.roomId === currentRoom) {
@@ -600,22 +498,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Обработка присоединения пользователя к комнате
-        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
-            if (currentRoom === roomId) {
-                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
-            }
-        });
-        
-        // Обработка выхода пользователя из комнаты
-        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
-            if (currentRoom === roomId) {
-                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
-            }
-        });
-        
         // Получение истории сообщений комнаты
         socket.on('room_messages', (messages) => {
+            console.log('Получена история сообщений комнаты:', messages.length, 'сообщений');
             messagesContainer.innerHTML = '';
             
             // Кэшируем сообщения комнаты
@@ -633,6 +518,470 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             scrollToBottom();
+        });
+        
+        // Обработка присоединения пользователя к комнате
+        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
+            console.log('Пользователь присоединился к комнате:', username, roomId);
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
+            }
+        });
+        
+        // Обработка выхода пользователя из комнаты
+        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
+            console.log('Пользователь покинул комнату:', username, roomId);
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
+            }
+        });
+    }
+    
+    // Регистрация нового пользователя
+    function registerUser() {
+        const username = registerUsername.value.trim();
+        const displayName = registerDisplayName.value.trim();
+        const password = registerPassword.value;
+        const passwordConfirm = registerPasswordConfirm.value;
+        
+        // Проверка введенных данных
+        if (!username) {
+            alert('Пожалуйста, введите логин');
+            return;
+        }
+        
+        if (!displayName) {
+            alert('Пожалуйста, введите отображаемое имя');
+            return;
+        }
+        
+        if (!password) {
+            alert('Пожалуйста, введите пароль');
+            return;
+        }
+        
+        if (password !== passwordConfirm) {
+            alert('Пароли не совпадают');
+            return;
+        }
+        
+        // Автоматически определяем URL сервера (для Railway)
+        const serverUrl = window.location.origin;
+        
+        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
+        console.log('Подключение к серверу для регистрации:', serverUrl);
+        
+        try {
+            // Отключаем существующее соединение если есть
+            if (socket && socket.connected) {
+                console.log('Закрываем предыдущее соединение для регистрации');
+                socket.disconnect();
+            }
+            
+            // Оптимизированные настройки Socket.IO для Railway
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 10000,
+                autoConnect: true,
+                forceNew: true, // Важно: создаем новое соединение
+                compress: true
+            });
+            
+            // Сохраняем в глобальную переменную
+            window.socket = socket;
+            
+            // Обновляем информацию о сервере
+            const serverName = window.location.hostname;
+            // Проверяем, является ли хост Railway-доменом
+            const isRailway = serverName.includes('railway.app') || 
+                            serverName.includes('up.railway.app');
+                            
+            connectedServer.textContent = isRailway ? 'Railway Cloud' : 
+                                        (serverName === 'localhost' ? 'локальный сервер' : serverName);
+            
+            // Обработчики событий Socket.io
+            setupSocketListeners();
+            
+            // Отправляем запрос на регистрацию
+            socket.emit('register_user', { username, displayName, password });
+            
+            return true;
+        } catch (error) {
+            console.error('Ошибка при создании Socket.IO клиента:', error);
+            connectionStatus.innerHTML = 
+                `<span style="color:red">Ошибка: ${error.message}</span>`;
+            return false;
+        }
+    }
+    
+    // Обработчики нажатия Enter
+    loginUsername.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            loginPassword.focus();
+        }
+    });
+    
+    loginPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            loginButton.click();
+        }
+    });
+    
+    registerUsername.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerDisplayName.focus();
+        }
+    });
+    
+    registerDisplayName.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerPassword.focus();
+        }
+    });
+    
+    registerPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerPasswordConfirm.focus();
+        }
+    });
+    
+    registerPasswordConfirm.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerButton.click();
+        }
+    });
+    
+    registerButton.addEventListener('click', registerUser);
+    
+    // Обработчики событий авторизации
+    loginButton.addEventListener('click', () => {
+        const username = loginUsername.value.trim();
+        const password = loginPassword.value;
+        
+        if (!username) {
+            alert('Пожалуйста, введите логин');
+            return;
+        }
+        
+        if (!password) {
+            alert('Пожалуйста, введите пароль');
+            return;
+        }
+        
+        authenticateUser(username, password);
+    });
+    
+    // Настройка обработчиков событий сокета
+    function setupSocketListeners() {
+        console.log("Настройка обработчиков сокетов");
+        if (!socket) {
+            console.error("Ошибка: socket не инициализирован");
+            return;
+        }
+        
+        // Отключаем предыдущие обработчики, чтобы избежать дублирования
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('auth_result');
+        socket.off('registration_result');
+        socket.off('message-history');
+        socket.off('new-message');
+        socket.off('user-list');
+        socket.off('system-message');
+        socket.off('room_created');
+        socket.off('room_joined');
+        socket.off('room_left');
+        socket.off('room_deleted');
+        socket.off('room_message');
+        socket.off('user_joined_room');
+        socket.off('user_left_room');
+        socket.off('room_messages');
+        
+        // Подключение к серверу
+        socket.on('connect', () => {
+            console.log('Подключено к серверу');
+            connectionStatus.innerHTML = 
+                `<span style="color:green">Подключено!</span>`;
+            
+            // Обновляем индикатор статуса
+            updateConnectionStatus('online');
+        });
+        
+        // Авторизация
+        socket.on('auth_result', (result) => {
+            if (result.success) {
+                // Авторизация успешна
+                console.log('Авторизация успешна:', result.message);
+                
+                // Сохраняем данные пользователя
+                isLoggedIn = true;
+                username = result.username;
+                window.username = username;
+                displayName = result.displayName;
+                window.displayName = displayName;
+                
+                // Обновляем глобальную переменную socket
+                window.socket = socket;
+                
+                // Сохраняем учетные данные, если выбрано "Запомнить меня"
+                if (rememberMe.checked) {
+                    saveCredentials(username, loginPassword.value, displayName);
+                }
+                
+                // Переключаемся на экран чата
+                loginScreen.style.display = 'none';
+                chatScreen.style.display = 'flex';
+                
+                // Инициализируем UI, обязательно делаем это только после успешной авторизации
+                initializeUI();
+                
+                // Загружаем настройки
+                loadSettings();
+            } else {
+                // Ошибка авторизации
+                console.error('Ошибка авторизации:', result.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка авторизации: ${result.message}</span>`;
+            }
+        });
+        
+        // Регистрация
+        socket.on('registration_result', (result) => {
+            if (result.success) {
+                // Регистрация успешна
+                console.log('Регистрация успешна:', result.message);
+                
+                // Сохраняем данные пользователя
+                isLoggedIn = true;
+                username = registerUsername.value.trim();
+                window.username = username;
+                displayName = registerDisplayName.value.trim();
+                window.displayName = displayName;
+                
+                // Обновляем глобальную переменную socket
+                window.socket = socket;
+                
+                // Сохраняем учетные данные, если выбрано "Запомнить меня"
+                if (rememberMe.checked) {
+                    saveCredentials(username, registerPassword.value, displayName);
+                }
+                
+                // Переключаемся на экран чата
+                loginScreen.style.display = 'none';
+                chatScreen.style.display = 'flex';
+                
+                // Инициализируем UI, обязательно делаем это только после успешной регистрации
+                initializeUI();
+                
+                // Загружаем настройки
+                loadSettings();
+            } else {
+                // Ошибка регистрации
+                console.error('Ошибка регистрации:', result.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка регистрации: ${result.message}</span>`;
+            }
+        });
+        
+        // Отключение от сервера
+        socket.on('disconnect', (reason) => {
+            console.log('Отключено от сервера:', reason);
+            
+            // Обновляем индикатор статуса
+            updateConnectionStatus('offline');
+            
+            if (reason === 'io server disconnect') {
+                // Сервер разорвал соединение
+                connectionStatus.innerHTML = 
+                    `<span style="color:orange">Отключено от сервера. Повторное подключение...</span>`;
+                socket.connect();
+            } else {
+                // Потеря соединения
+                connectionStatus.innerHTML = 
+                    `<span style="color:orange">Соединение потеряно. Повторное подключение...</span>`;
+            }
+        });
+        
+        // Получение истории сообщений
+        socket.on('message-history', (messages) => {
+            messagesContainer.innerHTML = '';
+            
+            // Кэшируем сообщения общего чата
+            const messageElements = [];
+            
+            messages.forEach(message => {
+                const element = addMessageToUI(message);
+                messageElements.push(element.cloneNode(true));
+            });
+            
+            cachedMessages.set('general', messageElements);
+            scrollToBottom();
+        });
+        
+        // Получение нового сообщения
+        socket.on('new-message', (message) => {
+            console.log('Получено новое сообщение:', message);
+            const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+            
+            const messageElement = addMessageToUI(message);
+            
+            // Если это сообщение для общего чата, добавляем его в кэш
+            if (currentRoom === 'general' && messageElement) {
+                if (!cachedMessages.has('general')) {
+                    cachedMessages.set('general', []);
+                }
+                const generalMessages = cachedMessages.get('general');
+                generalMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set('general', generalMessages);
+            }
+            
+            // Прокручиваем вниз только если пользователь был внизу
+            if (shouldScrollToBottom || message.username === username) {
+                scrollToBottom();
+            }
+        });
+        
+        // Обновление списка пользователей
+        socket.on('user-list', (users) => {
+            updateUserList(users);
+        });
+        
+        // Системные сообщения
+        socket.on('system-message', (message) => {
+            addSystemMessageToUI(message);
+            scrollToBottom();
+        });
+        
+        // Обработчики событий комнат
+        socket.on('room_created', ({ roomId, roomName, creator }) => {
+            console.log('Комната создана:', roomId, roomName, creator);
+            
+            // Добавляем комнату в список только если ее еще нет
+            if (!rooms.has(roomId)) {
+                rooms.set(roomId, { 
+                    name: roomName, 
+                    autoDeleteEnabled: true,
+                    messageLifetime: 30000
+                });
+                
+                // Сохраняем настройки
+                saveSettings();
+                
+                // Обновляем список комнат
+                updateRoomsList();
+            }
+            
+            addSystemMessageToUI(`Создана новая комната: ${roomName}`);
+            
+            // Если создатель текущий пользователь, автоматически входим в созданную комнату
+            if (creator === username) {
+                joinRoom(roomId);
+            }
+        });
+        
+        // Обработка присоединения к комнате
+        socket.on('room_joined', ({ roomId, roomName }) => {
+            console.log('Вы присоединились к комнате:', roomId, roomName);
+            // Сообщение будет добавлено в обработчике нажатия кнопки
+        });
+        
+        // Обработка выхода из комнаты
+        socket.on('room_left', ({ roomId, roomName }) => {
+            console.log('Вы вышли из комнаты:', roomId, roomName);
+            // Сообщение будет добавлено в обработчике нажатия кнопки
+        });
+        
+        // Удаление комнаты
+        socket.on('room_deleted', ({ roomId, roomName }) => {
+            console.log('Комната удалена:', roomId, roomName);
+            addSystemMessageToUI(`Комната удалена: ${roomName}`);
+            
+            if (currentRoom === roomId) {
+                currentRoom = 'general';
+                window.currentRoom = 'general';
+                messagesContainer.innerHTML = '';
+                
+                // Загружаем сообщения общего чата
+                if (cachedMessages.has('general')) {
+                    const generalMessages = cachedMessages.get('general');
+                    generalMessages.forEach(msg => {
+                        messagesContainer.appendChild(msg.cloneNode(true));
+                    });
+                }
+                
+                // Оповещаем сервер, что нужно получить актуальные сообщения общего чата
+                socket.emit('get_messages');
+            }
+            
+            // Удаляем комнату и её кэшированные сообщения
+            rooms.delete(roomId);
+            if (cachedMessages.has(roomId)) {
+                cachedMessages.delete(roomId);
+            }
+            
+            saveSettings();
+            updateRoomsList();
+        });
+        
+        // Сообщения в комнате
+        socket.on('room_message', (message) => {
+            console.log('Получено сообщение для комнаты:', message);
+            if (message.roomId === currentRoom) {
+                const messageElement = addMessageToUI(message);
+                
+                // Кэшируем сообщение для этой комнаты
+                if (messageElement) {
+                    if (!cachedMessages.has(currentRoom)) {
+                        cachedMessages.set(currentRoom, []);
+                    }
+                    const roomMessages = cachedMessages.get(currentRoom);
+                    roomMessages.push(messageElement.cloneNode(true));
+                    cachedMessages.set(currentRoom, roomMessages);
+                }
+                
+                // Прокручиваем вниз
+                scrollToBottom();
+            }
+        });
+        
+        // Получение истории сообщений комнаты
+        socket.on('room_messages', (messages) => {
+            console.log('Получена история сообщений комнаты:', messages.length, 'сообщений');
+            messagesContainer.innerHTML = '';
+            
+            // Кэшируем сообщения комнаты
+            const messageElements = [];
+            
+            messages.forEach(message => {
+                const element = addMessageToUI(message);
+                if (element) {
+                    messageElements.push(element.cloneNode(true));
+                }
+            });
+            
+            if (currentRoom) {
+                cachedMessages.set(currentRoom, messageElements);
+            }
+            
+            scrollToBottom();
+        });
+        
+        // Обработка присоединения пользователя к комнате
+        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
+            console.log('Пользователь присоединился к комнате:', username, roomId);
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
+            }
+        });
+        
+        // Обработка выхода пользователя из комнаты
+        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
+            console.log('Пользователь покинул комнату:', username, roomId);
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
+            }
         });
     }
 
@@ -1028,8 +1377,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        // Удаляем предыдущие обработчики, чтобы избежать дублирования
+        const oldRoomsList = roomsListElement.cloneNode(true);
+        roomsListElement.parentNode.replaceChild(oldRoomsList, roomsListElement);
+        
         // Добавляем обработчик для кнопок в списке комнат
-        roomsListElement.addEventListener('click', function(e) {
+        oldRoomsList.addEventListener('click', function(e) {
             if (e.target.classList.contains('room-button')) {
                 const roomId = e.target.dataset.roomid;
                 console.log('Клик по кнопке комнаты:', roomId);
@@ -1045,9 +1398,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roomId = e.target.dataset.roomid;
                 console.log('Клик по кнопке удаления комнаты:', roomId);
                 
+                // Используем модальное окно с подтверждением
                 if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
                     console.log('Отправляю запрос на удаление комнаты:', roomId);
                     socket.emit('delete_room', { roomId });
+                    
+                    // Сразу перенаправляем в общий чат, чтобы избежать проблем с интерфейсом
+                    if (currentRoom === roomId) {
+                        currentRoom = 'general';
+                        window.currentRoom = 'general';
+                        messagesContainer.innerHTML = '';
+                        socket.emit('get_messages');
+                    }
                 }
             }
         });
@@ -1409,9 +1771,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Вызвана функция отправки сообщения');
         
         // Проверяем, доступен ли сокет
-        if (!window.socket) {
-            console.error('Сокет не инициализирован!');
-            alert('Ошибка подключения к серверу');
+        if (!window.socket || !window.socket.connected) {
+            console.error('Сокет не инициализирован или не подключен!');
+            alert('Ошибка подключения к серверу. Обновите страницу.');
             return;
         }
         
@@ -1556,7 +1918,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Добавляем прямые обработчики в конце файла
+    // Добавляем прямой обработчик в конце файла
     (function() {
         // Ждем полной загрузки документа
         document.addEventListener('DOMContentLoaded', function() {
@@ -1566,68 +1928,71 @@ document.addEventListener('DOMContentLoaded', () => {
             const createRoomBtn = document.getElementById('create-room-button');
             if (createRoomBtn) {
                 console.log('Добавляю прямой обработчик для кнопки создания комнаты');
-                createRoomBtn.onclick = function() {
+                
+                // Удаляем все существующие обработчики
+                const oldBtn = createRoomBtn.cloneNode(true);
+                createRoomBtn.parentNode.replaceChild(oldBtn, createRoomBtn);
+                
+                // Добавляем новый обработчик
+                oldBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
                     console.log('Прямой клик по кнопке создания комнаты');
                     
                     // Проверяем, что пользователь авторизован и сокет доступен
-                    if (!window.socket) {
+                    if (!window.socket || !window.socket.connected) {
                         console.error('Сокет не инициализирован!');
-                        alert('Ошибка подключения к серверу');
+                        alert('Ошибка подключения к серверу. Обновите страницу.');
                         return;
                     }
                     
                     const roomName = prompt('Введите название комнаты:');
                     if (roomName && roomName.trim()) {
                         // Генерируем случайный ID комнаты
-                        const roomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                        const roomId = 'room_' + Date.now();
                         console.log('Создание комнаты:', roomId, roomName.trim(), 'от пользователя:', window.username);
                         
-                        // Отправляем запрос на создание комнаты
-                        window.socket.emit('create_room', { 
-                            roomId, 
-                            roomName: roomName.trim(),
-                            creator: window.username,
-                            autoDeleteEnabled: true,
-                            messageLifetime: 30000
-                        });
-                        
-                        // Обновляем список комнат
-                        if (window.rooms) {
-                            window.rooms.set(roomId, { 
-                                name: roomName.trim(), 
-                                autoDeleteEnabled: true, 
-                                messageLifetime: 30000 
+                        try {
+                            // Отправляем запрос на создание комнаты
+                            window.socket.emit('create_room', { 
+                                roomId, 
+                                roomName: roomName.trim(),
+                                creator: window.username
                             });
                             
-                            // Сохраняем настройки
-                            if (typeof window.saveSettings === 'function') {
-                                window.saveSettings();
-                            } else {
-                                console.error('Функция saveSettings не найдена');
-                            }
+                            console.log('Запрос на создание комнаты отправлен');
                             
-                            // Обновляем список комнат
-                            if (typeof window.updateRoomsList === 'function') {
-                                window.updateRoomsList();
-                            } else {
-                                console.error('Функция updateRoomsList не найдена');
+                            // Принудительно добавляем комнату в список, не дожидаясь события от сервера
+                            if (window.rooms) {
+                                window.rooms.set(roomId, { 
+                                    name: roomName.trim(), 
+                                    autoDeleteEnabled: true, 
+                                    messageLifetime: 30000 
+                                });
+                                
+                                // Обновляем список комнат
+                                if (typeof window.updateRoomsList === 'function') {
+                                    window.updateRoomsList();
+                                }
+                                
+                                // Переключаемся в новую комнату
+                                if (typeof window.joinRoom === 'function') {
+                                    window.joinRoom(roomId);
+                                }
                             }
-                            
-                            // Входим в комнату
-                            if (typeof window.joinRoom === 'function') {
-                                window.joinRoom(roomId);
-                            } else {
-                                console.error('Функция joinRoom не найдена');
-                            }
-                        } else {
-                            console.error('window.rooms не найдена');
+                        } catch (err) {
+                            console.error('Ошибка при создании комнаты:', err);
+                            alert('Произошла ошибка при создании комнаты. Попробуйте еще раз.');
                         }
                     }
-                };
-            } else {
-                console.error('Кнопка создания комнаты не найдена по ID');
+                });
             }
-            
+        });
+    })();
+    
+    // Добавляем прямой обработчик для кнопки отправки сообщений
+    (function() {
+        // Ждем полной загрузки документа
+        document.addEventListener('DOMContentLoaded', function() {
             // Обработчик для кнопки отправки сообщения
             const sendButton = document.getElementById('send-button');
             const messageInput = document.getElementById('message-input');
@@ -1635,7 +2000,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sendButton && messageInput) {
                 console.log('Добавляю прямой обработчик для кнопки отправки сообщения');
                 
-                sendButton.onclick = function(e) {
+                // Удаляем все существующие обработчики
+                const oldBtn = sendButton.cloneNode(true);
+                sendButton.parentNode.replaceChild(oldBtn, sendButton);
+                
+                // Новый инпут без обработчиков
+                const oldInput = messageInput.cloneNode(true);
+                messageInput.parentNode.replaceChild(oldInput, messageInput);
+                
+                // Добавляем новый обработчик для кнопки
+                oldBtn.addEventListener('click', function(e) {
                     e.preventDefault();
                     console.log('Прямой клик по кнопке отправки сообщения');
                     
@@ -1646,10 +2020,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.error('Функция sendMessage не найдена');
                         
                         // Резервный вариант отправки
-                        const text = messageInput.value.trim();
+                        const text = oldInput.value.trim();
                         if (!text) return;
                         
-                        if (window.socket) {
+                        if (window.socket && window.socket.connected) {
                             const message = {
                                 text: text,
                                 username: window.username,
@@ -1661,22 +2035,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             console.log('Отправка сообщения напрямую (резервный вариант):', message);
                             window.socket.emit('message', message);
-                            messageInput.value = '';
+                            oldInput.value = '';
                         } else {
-                            console.error('Сокет не инициализирован');
-                            alert('Ошибка подключения к серверу');
+                            console.error('Сокет не инициализирован или не подключен');
+                            alert('Ошибка подключения к серверу. Обновите страницу.');
                         }
                     }
-                };
+                });
                 
                 // Обработчик для поля ввода (Enter)
-                messageInput.onkeydown = function(e) {
+                oldInput.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        sendButton.click();
+                        oldBtn.click();
                         return false;
                     }
-                };
+                });
             } else {
                 console.error('Элементы для отправки сообщений не найдены');
             }
