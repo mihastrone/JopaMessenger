@@ -293,9 +293,38 @@ function authenticateUser(username, password) {
   // Получаем данные пользователя
   const user = userDatabase[username];
   
-  // Проверяем пароль
-  if (!verifyPassword(password, user.salt, user.hash)) {
-    return { success: false, message: 'Неверный пароль' };
+  // Проверяем пароль в зависимости от формата данных пользователя
+  // Обратная совместимость со старым форматом
+  if (user.password) {
+    // Старый формат - простой хеш SHA-256
+    const hashedPassword = crypto
+      .createHash('sha256')
+      .update(password)
+      .digest('hex');
+    
+    if (hashedPassword !== user.password) {
+      return { success: false, message: 'Неверный пароль' };
+    }
+    
+    // Миграция пользователя на новый формат хеширования
+    console.log(`Обновление формата хеширования для пользователя ${username}`);
+    const { salt, hash } = hashPassword(password);
+    user.salt = salt;
+    user.hash = hash;
+    delete user.password; // Удаляем старое поле
+    
+    // Сохраняем обновленные данные
+    saveUsers();
+  } 
+  else if (user.salt && user.hash) {
+    // Новый формат - с солью и более сложным хешированием
+    if (!verifyPassword(password, user.salt, user.hash)) {
+      return { success: false, message: 'Неверный пароль' };
+    }
+  }
+  else {
+    // Неизвестный формат данных
+    return { success: false, message: 'Ошибка формата данных пользователя' };
   }
   
   return { 
@@ -368,7 +397,7 @@ const messageTimers = {}; // Для хранения таймеров удале
 
 // Класс для сообщений с расширенными атрибутами
 class Message {
-  constructor(id, user, text, timestamp, roomId = null, autoDelete = false, lifetime = DEFAULT_MESSAGE_LIFETIME, image = null, displayName = null) {
+  constructor(id, user, text, timestamp, roomId = null, autoDelete = false, lifetime = DEFAULT_MESSAGE_LIFETIME, image = null, displayName = null, avatar = null) {
     this.id = id;
     this.user = user;
     this.text = text;
@@ -378,6 +407,7 @@ class Message {
     this.lifetime = lifetime;
     this.image = image; // Добавляем поле для хранения изображения
     this.displayName = displayName; // Добавляем отображаемое имя
+    this.avatar = avatar; // Добавляем аватар пользователя
   }
 }
 
@@ -565,6 +595,23 @@ io.engine.on("connection_error", (err) => {
   console.log(`Ошибка подключения Socket.IO: ${err.code} - ${err.message}`);
 });
 
+// Настройка периодической очистки старых аватаров и сохранения данных
+setInterval(cleanupOldAvatars, CLEANUP_INTERVAL);
+setInterval(saveAllData, 1000 * 60 * 5); // Сохраняем данные каждые 5 минут
+
+// Настройка обработки завершения сервера для сохранения данных
+process.on('SIGINT', () => {
+  console.log('Получен сигнал завершения. Сохраняем данные...');
+  saveAllData();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('Получен сигнал завершения. Сохраняем данные...');
+  saveAllData();
+  process.exit(0);
+});
+
 io.on('connection', (socket) => {
   console.log(`Новое соединение: ${socket.id}`);
 
@@ -593,16 +640,15 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Хешируем пароль
-    const hashedPassword = crypto
-      .createHash('sha256')
-      .update(password)
-      .digest('hex');
+    // Хешируем пароль с использованием более безопасного метода с солью
+    const { salt, hash } = hashPassword(password);
     
-    // Сохраняем данные пользователя
+    // Сохраняем данные пользователя с единой структурой
     userDatabase[username] = {
-      password: hashedPassword,
-      displayName: displayName || username
+      displayName: displayName || username,
+      salt,
+      hash,
+      created: Date.now()
     };
     
     // Сохраняем аватар, если он был предоставлен
@@ -644,7 +690,7 @@ io.on('connection', (socket) => {
   
   // Регистрация нового пользователя через пароль
   socket.on('register_user', (data) => {
-    const { username, displayName, password } = data;
+    const { username, displayName, password, avatar } = data;
     
     if (!username || !displayName || !password) {
       socket.emit('registration_result', { 
@@ -668,9 +714,35 @@ io.on('connection', (socket) => {
     const result = registerUser(username, displayName, password);
     
     if (result.success) {
+      // Устанавливаем аватар по умолчанию, если не предоставлен
+      if (avatar) {
+        // Обработка аватара пользователя (аналогично обработчику 'register')
+        const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Генерируем уникальное имя файла
+        const filename = `${username}_${Date.now()}.jpg`;
+        const avatarPath = path.join(AVATARS_DIR, filename);
+        
+        fs.writeFile(avatarPath, buffer, (err) => {
+          if (err) {
+            console.error('Ошибка при сохранении аватара:', err);
+          } else {
+            userAvatars[username] = `/uploads/avatars/${filename}`;
+            console.log(`Аватар для ${username} сохранен: ${avatarPath}`);
+          }
+        });
+      } else {
+        // Если аватар не предоставлен, используем аватар по умолчанию
+        userAvatars[username] = '/uploads/default-avatar.png';
+      }
+      
       // Авторизуем пользователя после успешной регистрации
       users[socket.id] = username;
       activeUsers[username] = { socketId: socket.id, displayName };
+      
+      // Добавляем URL аватара к результату
+      result.avatar = userAvatars[username];
       
       // Отправляем актуальные сообщения
       socket.emit('message-history', messages);
@@ -725,6 +797,14 @@ io.on('connection', (socket) => {
       // Добавляем сведения о пользователе в результат
       authResult.username = username;
       authResult.displayName = activeUsers[username].displayName;
+      
+      // Добавляем URL аватара, если он есть
+      if (userAvatars[username]) {
+        authResult.avatar = userAvatars[username];
+      } else {
+        // Если аватар не найден, используем аватар по умолчанию
+        authResult.avatar = '/uploads/default-avatar.png';
+      }
       
       // Отправляем актуальные сообщения
       socket.emit('message-history', messages);
@@ -1014,6 +1094,9 @@ io.on('connection', (socket) => {
         return;
     }
     
+    // Получаем аватар пользователя или устанавливаем аватар по умолчанию
+    const userAvatar = userAvatars[username] || '/uploads/default-avatar.png';
+    
     // Формируем объект сообщения
     const msgObj = {
         id: messageData.id || Date.now() + Math.random().toString(36).substring(7),
@@ -1022,7 +1105,7 @@ io.on('connection', (socket) => {
         text: messageData.text,
         room: messageData.room, // ID комнаты или null для общего чата
         timestamp: new Date(),
-        avatar: userAvatars[username] || '/uploads/default-avatar.png' // Добавляем аватар
+        avatar: userAvatar // Добавляем аватар пользователя в сообщение
     };
     
     // Проверяем наличие изображения
@@ -1070,7 +1153,8 @@ io.on('connection', (socket) => {
                 room.autoDeleteEnabled,
                 room.messageLifetime,
                 msgObj.image,
-                msgObj.displayName
+                msgObj.displayName,
+                msgObj.avatar
             );
             
             // Добавляем сообщение в историю комнаты
@@ -1092,7 +1176,8 @@ io.on('connection', (socket) => {
             false,
             DEFAULT_MESSAGE_LIFETIME,
             msgObj.image,
-            msgObj.displayName
+            msgObj.displayName,
+            msgObj.avatar
         );
         
         // Добавляем сообщение в историю общего чата
@@ -1121,13 +1206,73 @@ io.on('connection', (socket) => {
         return;
     }
     
-    // Конвертируем base64 в бинарные данные
+    // Проверяем, запрошен ли сброс аватара
+    if (data.reset) {
+        // Устанавливаем аватар по умолчанию
+        userAvatars[username] = '/uploads/default-avatar.png';
+        
+        // Сохраняем изменения
+        saveUserAvatars();
+        
+        // Отправляем успешный ответ
+        socket.emit('avatar_update_response', { 
+            success: true, 
+            message: 'Аватар сброшен на стандартный',
+            avatarUrl: '/uploads/default-avatar.png'
+        });
+        
+        console.log(`Аватар пользователя ${username} сброшен на стандартный`);
+        return;
+    }
+    
+    // Проверка наличия аватара
     const avatar = data.avatar;
+    if (!avatar) {
+        socket.emit('avatar_update_response', { 
+            success: false, 
+            message: 'Изображение аватара не предоставлено' 
+        });
+        return;
+    }
+    
+    // Проверка формата (должен быть base64 изображения)
+    if (!avatar.startsWith('data:image/')) {
+        socket.emit('avatar_update_response', { 
+            success: false, 
+            message: 'Неверный формат изображения' 
+        });
+        return;
+    }
+    
+    // Получаем тип изображения
+    const imageType = avatar.split(';')[0].split('/')[1];
+    
+    // Проверка поддерживаемых форматов
+    const supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
+    if (!supportedFormats.includes(imageType.toLowerCase())) {
+        socket.emit('avatar_update_response', { 
+            success: false, 
+            message: 'Неподдерживаемый формат изображения. Поддерживаются: JPEG, PNG, GIF, WebP' 
+        });
+        return;
+    }
+    
+    // Конвертируем base64 в бинарные данные
     const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
     
+    // Проверка размера файла (максимум 2 МБ)
+    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 МБ
+    if (buffer.length > MAX_FILE_SIZE) {
+        socket.emit('avatar_update_response', { 
+            success: false, 
+            message: 'Размер файла превышает максимально допустимый (2 МБ)' 
+        });
+        return;
+    }
+    
     // Генерируем уникальное имя файла
-    const filename = `${username}_${Date.now()}.jpg`;
+    const filename = `${username}_${Date.now()}.${imageType.toLowerCase()}`;
     const avatarPath = path.join(AVATARS_DIR, filename);
     
     // Сохраняем файл
@@ -1141,9 +1286,30 @@ io.on('connection', (socket) => {
         } else {
             console.log(`Аватар для ${username} обновлен: ${avatarPath}`);
             
+            // Удаляем старый аватар, если он не является аватаром по умолчанию
+            const oldAvatarUrl = userAvatars[username];
+            if (oldAvatarUrl && !oldAvatarUrl.includes('default-avatar')) {
+                try {
+                    // Получаем имя файла из URL
+                    const oldFileName = oldAvatarUrl.split('/').pop();
+                    const oldFilePath = path.join(AVATARS_DIR, oldFileName);
+                    
+                    // Проверяем, существует ли файл
+                    if (fs.existsSync(oldFilePath)) {
+                        fs.unlinkSync(oldFilePath);
+                        console.log(`Удален старый аватар пользователя ${username}: ${oldFilePath}`);
+                    }
+                } catch (error) {
+                    console.error('Ошибка при удалении старого аватара:', error);
+                }
+            }
+            
             // Сохраняем путь к аватару (относительный путь для клиента)
             const avatarUrl = `/uploads/avatars/${filename}`;
             userAvatars[username] = avatarUrl;
+            
+            // Сохраняем обновленные аватары
+            saveUserAvatars();
             
             // Отправляем успешный ответ
             socket.emit('avatar_update_response', { 
@@ -1154,480 +1320,7 @@ io.on('connection', (socket) => {
         }
     });
   });
-
-  // Отключение пользователя
-  socket.on('disconnect', () => {
-    if (users[socket.id]) {
-      const username = users[socket.id];
-      const displayName = activeUsers[username]?.displayName || username;
-      
-      // Удаляем пользователя из всех комнат
-      rooms.forEach((room, roomId) => {
-        if (room.members.has(username)) {
-          room.members.delete(username);
-          io.to(roomId).emit('user_left_room', { 
-            username, 
-            displayName,
-            roomId, 
-            roomName: room.name 
-          });
-        }
-      });
-      
-      // Создаем системное сообщение об отключении
-      const systemMessage = `${displayName} покинул чат`;
-      io.emit('system-message', systemMessage);
-      
-      // Удаляем пользователя из списков
-      delete activeUsers[username];
-      delete users[socket.id];
-      
-      // Обновляем список активных пользователей
-      io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
-    }
-  });
-
-  socket.on('user_left_room', ({ username, roomId, roomName }) => {
-    // Оповещаем всех участников комнаты о выходе пользователя
-    const room = rooms.get(roomId);
-    const displayName = activeUsers[username]?.displayName || username;
-    
-    io.to(roomId).emit('user_left_room', { 
-      username, 
-      displayName,
-      roomId, 
-      roomName: room.name 
-    });
-    
-    // Оповещаем пользователя о выходе из комнаты
-    socket.emit('room_left', { roomId, roomName: room.name });
-    
-    console.log(`Пользователь ${username} (${displayName}) покинул комнату ${room.name}`);
-  });
-
-  // Функция для обновления списка забаненных пользователей для всех админов
-  function updateAdminsWithBannedList() {
-    admins.forEach(adminUsername => {
-      if (activeUsers[adminUsername]) {
-        const adminSocketId = activeUsers[adminUsername].socketId;
-        const adminSocket = io.sockets.sockets.get(adminSocketId);
-        if (adminSocket) {
-          adminSocket.emit('banned_users_list', getBannedUsers());
-        }
-      }
-    });
-  }
-
-  // Функция для обновления списка приватных комнат для всех админов
-  function updateAdminsWithRoomsList() {
-    admins.forEach(adminUsername => {
-      if (activeUsers[adminUsername]) {
-        const adminSocketId = activeUsers[adminUsername].socketId;
-        const adminSocket = io.sockets.sockets.get(adminSocketId);
-        if (adminSocket) {
-          adminSocket.emit('private_rooms_list', getPrivateRooms());
-        }
-      }
-    });
-  }
 });
-
-// Обработка SIGTERM и SIGINT для корректного завершения в Railway
-['SIGTERM', 'SIGINT'].forEach(signal => {
-  process.on(signal, () => {
-    console.log(`Получен сигнал ${signal}, завершение работы...`);
-    
-    // Сохраняем все данные перед завершением
-    console.log('Сохранение данных перед выключением...');
-    saveAllData();
-    
-    // Очищаем все таймеры удаления сообщений
-    Object.values(messageTimers).forEach(timer => clearTimeout(timer));
-    
-    // Завершаем работу сервера
-    server.close(() => {
-      console.log('Сервер остановлен');
-      process.exit(0);
-    });
-    
-    // Устанавливаем таймаут для принудительного завершения,
-    // если сервер не завершится корректно в течение 10 секунд
-    setTimeout(() => {
-      console.error('Принудительное завершение сервера после таймаута!');
-      process.exit(1);
-    }, 10000);
-  });
-});
-
-// Запуск сервера с поддержкой Railway
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
-  console.log(`Публичный URL: ${HOST_URL}`);
-  console.log(`Время запуска: ${new Date().toISOString()}`);
-  console.log(`Директория для загрузок: ${UPLOADS_DIR}`);
-  console.log(`__dirname: ${__dirname}`);
-  console.log(`Полный путь: ${path.resolve(UPLOADS_DIR)}`);
-  
-  // Создаем директорию для загрузок если ее нет
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    try {
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-      console.log(`Директория для загрузок создана: ${UPLOADS_DIR}`);
-    } catch (error) {
-      console.error(`Ошибка при создании директории для загрузок: ${error}`);
-    }
-  }
-  
-  // Запускаем периодическую очистку старых изображений (важно для Railway)
-  setInterval(cleanupOldImages, CLEANUP_INTERVAL);
-  
-  // Периодическое сохранение пользовательских данных
-  setInterval(saveAllData, 1000 * 60 * 10); // Каждые 10 минут
-});
-
-// Расчет размера данных в base64
-function calculateBase64Size(base64String) {
-  // Удаляем заголовок data URL если он есть
-  const base64 = base64String.indexOf(';base64,') !== -1 
-    ? base64String.split(';base64,')[1] 
-    : base64String;
-  
-  // Размер в байтах = (длина строки base64) * 3/4
-  return Math.ceil(base64.length * 0.75);
-}
-
-// Функция для сохранения изображения, оптимизированная для Railway
-function saveImage(base64Data, messageId) {
-  try {
-    // Проверяем существование директории и создаем её при необходимости
-    if (!fs.existsSync(UPLOADS_DIR)) {
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-      console.log(`Создана директория для загрузок: ${UPLOADS_DIR}`);
-    }
-  
-    // Генерируем уникальное имя файла
-    const hash = crypto.createHash('md5').update(messageId.toString()).digest('hex');
-    
-    // Определяем формат файла из base64
-    let fileExt = 'jpg';
-    if (base64Data.includes('data:image/png')) {
-      fileExt = 'png';
-    } else if (base64Data.includes('data:image/gif')) {
-      fileExt = 'gif';
-    } else if (base64Data.includes('data:image/webp')) {
-      fileExt = 'webp';
-    }
-    
-    const fileName = `${hash}-${messageId}.${fileExt}`;
-    const filePath = path.join(UPLOADS_DIR, fileName);
-    
-    console.log(`Сохранение изображения в файл: ${filePath}`);
-    
-    // Конвертируем base64 в бинарные данные
-    const base64Image = base64Data.split(';base64,').pop();
-    const imageBuffer = Buffer.from(base64Image, 'base64');
-    
-    // Записываем файл на диск
-    fs.writeFileSync(filePath, imageBuffer);
-    console.log(`Изображение успешно сохранено: ${filePath}`);
-    
-    // Возвращаем относительный путь для доступа через веб
-    return `/uploads/${fileName}`;
-  } catch (error) {
-    console.error('Ошибка при сохранении изображения:', error);
-    // В случае ошибки для Railway возвращаем null вместо выброса исключения
-    return null;
-  }
-}
-
-// Функция очистки старых изображений
-function cleanupOldImages() {
-  console.log('Запуск очистки старых изображений...');
-  
-  try {
-    // Проверяем существование директории
-    if (!fs.existsSync(UPLOADS_DIR)) {
-      console.log(`Директория для загрузок не существует: ${UPLOADS_DIR}, создаём её`);
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-      return; // Нет смысла продолжать, если директория только что создана
-    }
-  
-    // Получаем список всех файлов в директории
-    const files = fs.readdirSync(UPLOADS_DIR);
-    const now = Date.now();
-    let deletedCount = 0;
-    
-    // Проверяем каждый файл
-    files.forEach(file => {
-      const filePath = path.join(UPLOADS_DIR, file);
-      
-      try {
-        // Получаем информацию о файле
-        const stats = fs.statSync(filePath);
-        const fileAge = now - stats.mtimeMs;
-        
-        // Удаляем файлы старше указанного возраста
-        if (fileAge > IMAGE_MAX_AGE) {
-          // Проверяем, используется ли файл в сообщениях
-          const isInUse = checkImageInUse('/uploads/' + file);
-          
-          if (!isInUse) {
-            fs.unlinkSync(filePath);
-            deletedCount++;
-            console.log(`Удален старый файл: ${file}, возраст: ${Math.round(fileAge / (1000 * 60 * 60))} часов`);
-          }
-        }
-      } catch (error) {
-        console.error(`Ошибка при обработке файла ${file}:`, error);
-      }
-    });
-    
-    console.log(`Очистка завершена. Удалено ${deletedCount} файлов.`);
-  } catch (error) {
-    console.error('Ошибка при очистке старых изображений:', error);
-  }
-}
-
-// Проверка, используется ли изображение в сообщениях
-function checkImageInUse(imagePath) {
-  // Проверяем в общем чате
-  const inMessages = messages.some(msg => msg.image === imagePath);
-  if (inMessages) return true;
-  
-  // Проверяем в комнатах
-  for (const [roomId, room] of rooms.entries()) {
-    const inRoomMessages = room.messages.some(msg => msg.image === imagePath);
-    if (inRoomMessages) return true;
-  }
-  
-  return false;
-}
-
-// Функция для добавления администратора напрямую из консоли
-// Для использования: node -e "require('./server.js').addAdmin('имя_пользователя')"
-function addAdmin(username) {
-  if (!username) {
-    console.error('Необходимо указать имя пользователя');
-    return false;
-  }
-
-  // Проверяем, существует ли пользователь
-  if (!userDatabase[username]) {
-    console.error(`Пользователь ${username} не найден в базе данных`);
-    return false;
-  }
-
-  // Добавляем пользователя в список администраторов
-  admins.add(username);
-  
-  // Сохраняем изменения в файл
-  saveAdmins();
-  
-  console.log(`Пользователь ${username} успешно добавлен в список администраторов`);
-  return true;
-}
-
-// Экспортируем функцию для возможности вызова из консоли
-module.exports = { addAdmin };
-
-// Класс для управления пользователями и их данными
-class UserManager {
-  constructor() {
-    // Инициализируем коллекции
-    this.bannedUsers = bannedUsers;
-    this.rooms = rooms;
-    
-    this.loadUsers();
-    this.loadBannedUsers();
-    this.loadAdmins();
-    this.loadRooms();
-    
-    // Настраиваем автоматическое сохранение данных
-    this.setupAutoSave();
-  }
-  
-  // Загрузка пользователей из файла
-  loadUsers() {
-    try {
-      if (fs.existsSync(USERS_FILE)) {
-        const userData = fs.readFileSync(USERS_FILE, 'utf8');
-        userDatabase = JSON.parse(userData);
-        console.log(`Загружено ${Object.keys(userDatabase).length} пользователей`);
-      } else {
-        // Создаем пустой файл пользователей
-        fs.writeFileSync(USERS_FILE, JSON.stringify({}), 'utf8');
-        console.log('Создан новый файл пользователей');
-      }
-    } catch (error) {
-      console.error(`Ошибка при загрузке пользователей: ${error.message}`);
-      // Продолжаем с пустой базой пользователей
-      userDatabase = {};
-    }
-  }
-  
-  // Загрузка забаненных пользователей из файла
-  loadBannedUsers() {
-    try {
-      if (fs.existsSync(BANNED_USERS_FILE)) {
-        const bannedData = fs.readFileSync(BANNED_USERS_FILE, 'utf8');
-        const bannedArray = JSON.parse(bannedData);
-        
-        // Преобразуем массив обратно в Map и обновляем глобальную переменную
-        this.bannedUsers = new Map(bannedArray);
-        bannedUsers = this.bannedUsers; // Обновляем глобальную переменную
-        console.log(`Загружено ${this.bannedUsers.size} забаненных пользователей`);
-      } else {
-        // Создаем пустой файл забаненных пользователей
-        fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify([]), 'utf8');
-        console.log('Создан новый файл забаненных пользователей');
-      }
-    } catch (error) {
-      console.error(`Ошибка при загрузке забаненных пользователей: ${error.message}`);
-      // Продолжаем с пустым списком забаненных пользователей
-      this.bannedUsers = new Map();
-      bannedUsers = this.bannedUsers; // Обновляем глобальную переменную
-    }
-  }
-  
-  // Загрузка администраторов из файла
-  loadAdmins() {
-    try {
-      if (fs.existsSync(ADMINS_FILE)) {
-        const adminsData = fs.readFileSync(ADMINS_FILE, 'utf8');
-        const adminsArray = JSON.parse(adminsData);
-        
-        // Преобразуем массив обратно в Set
-        admins = new Set(adminsArray);
-        console.log(`Загружено ${admins.size} администраторов`);
-      } else {
-        // Создаем пустой файл администраторов
-        fs.writeFileSync(ADMINS_FILE, JSON.stringify([]), 'utf8');
-        console.log('Создан новый файл администраторов');
-      }
-    } catch (error) {
-      console.error(`Ошибка при загрузке администраторов: ${error.message}`);
-      // Продолжаем с пустым списком администраторов
-      admins = new Set();
-    }
-  }
-  
-  // Загрузка комнат из файла
-  loadRooms() {
-    try {
-      if (fs.existsSync(ROOMS_FILE)) {
-        const roomsData = fs.readFileSync(ROOMS_FILE, 'utf8');
-        const roomsArray = JSON.parse(roomsData);
-        
-        // Преобразуем массив обратно в Map
-        this.rooms = new Map();
-        rooms = this.rooms; // Обновляем глобальную переменную
-        
-        roomsArray.forEach(roomData => {
-          const room = new Room(roomData.id, roomData.name, roomData.creator);
-          room.members = new Set(roomData.members);
-          room.autoDeleteEnabled = roomData.autoDeleteEnabled;
-          room.messageLifetime = roomData.messageLifetime;
-          room.messages = roomData.messages || [];
-          this.rooms.set(roomData.id, room);
-        });
-        
-        console.log(`Загружено ${this.rooms.size} комнат`);
-      } else {
-        // Создаем пустой файл комнат
-        fs.writeFileSync(ROOMS_FILE, JSON.stringify([]), 'utf8');
-        console.log('Создан новый файл комнат');
-      }
-    } catch (error) {
-      console.error(`Ошибка при загрузке комнат: ${error.message}`);
-      // Продолжаем с пустым списком комнат
-      this.rooms = new Map();
-      rooms = this.rooms; // Обновляем глобальную переменную
-    }
-  }
-  
-  // Настройка автоматического сохранения данных
-  setupAutoSave() {
-    // Сохраняем данные каждые 5 минут
-    setInterval(() => {
-      this.saveAllData();
-    }, 5 * 60 * 1000);
-    
-    // Сохраняем данные при завершении работы сервера
-    ['SIGTERM', 'SIGINT'].forEach(signal => {
-      process.on(signal, () => {
-        console.log(`Получен сигнал ${signal}, сохраняем данные...`);
-        this.saveAllData();
-      });
-    });
-  }
-  
-  // Сохранение всех данных
-  saveAllData() {
-    this.saveUsers();
-    this.saveBannedUsers();
-    this.saveAdmins();
-    this.saveRooms();
-    console.log('Все данные успешно сохранены');
-  }
-  
-  // Сохранение пользователей в файл
-  saveUsers() {
-    try {
-      fs.writeFileSync(USERS_FILE, JSON.stringify(userDatabase), 'utf8');
-      console.log('Данные пользователей сохранены');
-    } catch (error) {
-      console.error(`Ошибка при сохранении пользователей: ${error.message}`);
-    }
-  }
-  
-  // Сохранение забаненных пользователей в файл
-  saveBannedUsers() {
-    try {
-      // Преобразуем Map в массив пар [ключ, значение] для сохранения
-      const bannedArray = Array.from(this.bannedUsers.entries());
-      fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify(bannedArray), 'utf8');
-      console.log('Данные забаненных пользователей сохранены');
-    } catch (error) {
-      console.error(`Ошибка при сохранении забаненных пользователей: ${error.message}`);
-    }
-  }
-  
-  // Сохранение администраторов в файл
-  saveAdmins() {
-    try {
-      // Преобразуем Set в массив для сохранения
-      const adminsArray = Array.from(admins);
-      fs.writeFileSync(ADMINS_FILE, JSON.stringify(adminsArray), 'utf8');
-      console.log('Данные администраторов сохранены');
-    } catch (error) {
-      console.error(`Ошибка при сохранении администраторов: ${error.message}`);
-    }
-  }
-  
-  // Сохранение комнат в файл
-  saveRooms() {
-    try {
-      // Преобразуем Map в массив объектов для сохранения
-      const roomsArray = Array.from(this.rooms.values()).map(room => {
-        // Возвращаем сериализуемый объект комнаты
-        return {
-          id: room.id,
-          name: room.name,
-          creator: room.creator,
-          members: Array.from(room.members),
-          autoDeleteEnabled: room.autoDeleteEnabled,
-          messageLifetime: room.messageLifetime,
-          messages: room.messages // Сохраняем историю сообщений комнаты
-        };
-      });
-      
-      fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsArray), 'utf8');
-      console.log('Данные комнат сохранены');
-    } catch (error) {
-      console.error(`Ошибка при сохранении комнат: ${error.message}`);
-    }
-  }
-}
 
 // Создаем экземпляр менеджера пользователей
 const userManager = new UserManager();
@@ -1635,4 +1328,71 @@ const userManager = new UserManager();
 // Обновляем определение функции saveAllData для использования userManager
 function saveAllData() {
   userManager.saveAllData();
-} 
+}
+
+// Функция очистки старых аватаров
+function cleanupOldAvatars() {
+  console.log('Запуск очистки старых аватаров...');
+  
+  try {
+    // Проверяем существование директории
+    if (!fs.existsSync(AVATARS_DIR)) {
+      console.log(`Директория для аватаров не существует: ${AVATARS_DIR}, создаём её`);
+      fs.mkdirSync(AVATARS_DIR, { recursive: true });
+      return;
+    }
+    
+    // Получаем список всех файлов в директории аватаров
+    const files = fs.readdirSync(AVATARS_DIR);
+    const now = Date.now();
+    let deletedCount = 0;
+    
+    // Создаем множество используемых аватаров
+    const usedAvatars = new Set();
+    
+    // Собираем все используемые аватары из userAvatars
+    for (const avatar of Object.values(userAvatars)) {
+      if (avatar && !avatar.includes('default-avatar')) {
+        // Преобразуем полный путь в имя файла (например, /uploads/avatars/user_123.jpg -> user_123.jpg)
+        const fileName = avatar.split('/').pop();
+        usedAvatars.add(fileName);
+      }
+    }
+    
+    // Проверяем каждый файл
+    files.forEach(file => {
+      // Пропускаем файл аватара по умолчанию
+      if (file === 'default-avatar.png') return;
+      
+      const filePath = path.join(AVATARS_DIR, file);
+      
+      try {
+        // Получаем информацию о файле
+        const stats = fs.statSync(filePath);
+        const fileAge = now - stats.mtimeMs;
+        
+        // Удаляем файлы, которые старше указанного возраста И не используются
+        if ((fileAge > IMAGE_MAX_AGE) && !usedAvatars.has(file)) {
+          fs.unlinkSync(filePath);
+          deletedCount++;
+          console.log(`Удален старый аватар: ${file}, возраст: ${Math.round(fileAge / (1000 * 60 * 60))} часов`);
+        }
+      } catch (error) {
+        console.error(`Ошибка при обработке файла аватара ${file}:`, error);
+      }
+    });
+    
+    console.log(`Очистка аватаров завершена. Удалено ${deletedCount} файлов.`);
+  } catch (error) {
+    console.error('Ошибка при очистке старых аватаров:', error);
+  }
+}
+
+// Запускаем HTTP сервер
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
+  console.log(`Хост: ${HOST_URL}`);
+  
+  // Очищаем старые аватары при запуске
+  cleanupOldAvatars();
+}); 
