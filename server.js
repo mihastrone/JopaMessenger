@@ -71,6 +71,12 @@ try {
   userDatabase = {};
 }
 
+// Инициализация списка забаненных пользователей
+let bannedUsers = new Map();
+
+// Инициализация словаря аватаров пользователей
+let userAvatars = {};
+
 // Загружаем забаненных пользователей при запуске
 if (fs.existsSync(BANNED_USERS_FILE)) {
     try {
@@ -357,7 +363,6 @@ const messages = [];
 const users = {}; // Хранит socketId -> username
 const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
-const userAvatars = {}; // Хранение аватаров пользователей
 
 // Класс для сообщений с расширенными атрибутами
 class Message {
@@ -1426,6 +1431,9 @@ module.exports = { addAdmin };
 // Класс для управления пользователями и их данными
 class UserManager {
   constructor() {
+    // Инициализируем коллекции
+    this.bannedUsers = bannedUsers;
+    
     this.loadUsers();
     this.loadBannedUsers();
     this.loadAdmins();
@@ -1461,9 +1469,10 @@ class UserManager {
         const bannedData = fs.readFileSync(BANNED_USERS_FILE, 'utf8');
         const bannedArray = JSON.parse(bannedData);
         
-        // Преобразуем массив обратно в Map
-        bannedUsers = new Map(bannedArray);
-        console.log(`Загружено ${bannedUsers.size} забаненных пользователей`);
+        // Преобразуем массив обратно в Map и обновляем глобальную переменную
+        this.bannedUsers = new Map(bannedArray);
+        bannedUsers = this.bannedUsers; // Обновляем глобальную переменную
+        console.log(`Загружено ${this.bannedUsers.size} забаненных пользователей`);
       } else {
         // Создаем пустой файл забаненных пользователей
         fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify([]), 'utf8');
@@ -1472,7 +1481,8 @@ class UserManager {
     } catch (error) {
       console.error(`Ошибка при загрузке забаненных пользователей: ${error.message}`);
       // Продолжаем с пустым списком забаненных пользователей
-      bannedUsers = new Map();
+      this.bannedUsers = new Map();
+      bannedUsers = this.bannedUsers; // Обновляем глобальную переменную
     }
   }
   
@@ -1568,7 +1578,7 @@ class UserManager {
   saveBannedUsers() {
     try {
       // Преобразуем Map в массив пар [ключ, значение] для сохранения
-      const bannedArray = Array.from(bannedUsers.entries());
+      const bannedArray = Array.from(this.bannedUsers.entries());
       fs.writeFileSync(BANNED_USERS_FILE, JSON.stringify(bannedArray), 'utf8');
       console.log('Данные забаненных пользователей сохранены');
     } catch (error) {
