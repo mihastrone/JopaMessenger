@@ -220,31 +220,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Функция для регистрации нового пользователя
-    function registerUser() {
+    // Обработка нажатия на кнопку регистрации
+    document.getElementById('register-button').addEventListener('click', function() {
         const username = document.getElementById('register-username').value.trim();
-        const password = document.getElementById('register-password').value.trim();
-        const displayNameInput = document.getElementById('register-display-name').value.trim();
+        const password = document.getElementById('register-password').value;
+        const passwordConfirm = document.getElementById('register-password-confirm').value;
+        const displayName = document.getElementById('register-display-name').value.trim() || username;
+        const isSimpleMode = document.getElementById('simple-mode') ? document.getElementById('simple-mode').checked : false;
         
-        if (!username || !password) {
-            showMessage('Имя пользователя и пароль не могут быть пустыми!', 'error');
-            return;
-        }
+        console.log('Нажата кнопка регистрации. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный'));
         
-        // Устанавливаем отображаемое имя равным имени пользователя, если оно не указано
-        const userDisplayName = displayNameInput || username;
-        
-        // Сериализуем аватар для отправки на сервер
-        socket.emit('register', { username, password, displayName: userDisplayName, avatar: avatarPreview });
-    }
-    
-    // Обработчики событий авторизации
-    loginButton.addEventListener('click', () => {
-        const username = loginUsername.value.trim();
-        const password = loginPassword.value;
-        
+        // Проверки
         if (!username) {
-            alert('Пожалуйста, введите логин');
+            alert('Пожалуйста, введите имя пользователя');
             return;
         }
         
@@ -253,45 +241,60 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        authenticateUser(username, password);
-    });
-    
-    registerButton.addEventListener('click', registerUser);
-    
-    // Обработчики нажатия Enter
-    loginUsername.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            loginPassword.focus();
+        if (password !== passwordConfirm) {
+            alert('Пароли не совпадают');
+            return;
+        }
+        
+        // Данные для отправки
+        const registrationData = {
+            username: username,
+            password: password,
+            displayName: displayName,
+            avatar: currentAvatar
+        };
+        
+        // Отправка в зависимости от режима
+        if (isSimpleMode) {
+            console.log('Используется упрощенный режим регистрации');
+            socket.emit('register_simple', registrationData);
+        } else {
+            console.log('Используется стандартный режим регистрации');
+            socket.emit('register', registrationData);
         }
     });
     
-    loginPassword.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            loginButton.click();
+    // Обработка нажатия на кнопку входа
+    document.getElementById('login-button').addEventListener('click', function() {
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+        const isSimpleMode = document.getElementById('simple-mode') ? document.getElementById('simple-mode').checked : false;
+        
+        console.log('Нажата кнопка входа. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный'));
+        
+        if (!username) {
+            alert('Пожалуйста, введите имя пользователя');
+            return;
         }
-    });
-    
-    registerUsername.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerDisplayName.focus();
+        
+        if (!password) {
+            alert('Пожалуйста, введите пароль');
+            return;
         }
-    });
-    
-    registerDisplayName.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerPassword.focus();
-        }
-    });
-    
-    registerPassword.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerPasswordConfirm.focus();
-        }
-    });
-    
-    registerPasswordConfirm.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            registerButton.click();
+        
+        // Данные для отправки
+        const loginData = {
+            username: username,
+            password: password
+        };
+        
+        // Отправка в зависимости от режима
+        if (isSimpleMode) {
+            console.log('Используется упрощенный режим входа');
+            socket.emit('authenticate_simple', loginData);
+        } else {
+            console.log('Используется стандартный режим входа');
+            socket.emit('authenticate', loginData);
         }
     });
     
@@ -583,6 +586,84 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             scrollToBottom();
+        });
+
+        // Добавляем обработчики для регистрации и авторизации
+        socket.on('register_response', function(response) {
+            console.log('Получен ответ на регистрацию:', response);
+            
+            const messageElement = document.getElementById('register-message');
+            if (messageElement) {
+                messageElement.textContent = response.message;
+                
+                if (response.success) {
+                    messageElement.classList.remove('error');
+                    messageElement.classList.add('success');
+                    
+                    // Сохраняем URL аватара, если он есть
+                    if (response.avatarUrl) {
+                        localStorage.setItem('user_avatar', response.avatarUrl);
+                        console.log('Аватар сохранен в localStorage:', response.avatarUrl);
+                    }
+                    
+                    // Переключаемся на форму авторизации через 2 секунды
+                    setTimeout(() => {
+                        document.getElementById('login-tab').click();
+                        console.log('Переход на вкладку авторизации');
+                    }, 2000);
+                } else {
+                    messageElement.classList.remove('success');
+                    messageElement.classList.add('error');
+                }
+            }
+        });
+
+        socket.on('authenticate_response', function(response) {
+            console.log('Получен ответ на авторизацию:', response);
+            
+            const messageElement = document.getElementById('login-message');
+            if (messageElement) {
+                messageElement.textContent = response.message;
+                
+                if (response.success) {
+                    messageElement.classList.remove('error');
+                    messageElement.classList.add('success');
+                    
+                    // Сохраняем токен и данные пользователя
+                    localStorage.setItem('token', response.token);
+                    localStorage.setItem('username', response.username);
+                    if (response.displayName) {
+                        localStorage.setItem('displayName', response.displayName);
+                    }
+                    if (response.avatarUrl) {
+                        localStorage.setItem('user_avatar', response.avatarUrl);
+                        console.log('Аватар сохранен в localStorage:', response.avatarUrl);
+                    }
+                    
+                    // Показываем интерфейс чата
+                    document.getElementById('login-container').style.display = 'none';
+                    document.getElementById('chat-container').style.display = 'flex';
+                    
+                    // Запрашиваем комнаты, чтобы заполнить список
+                    socket.emit('get_rooms');
+                    
+                    // Устанавливаем имя пользователя в интерфейсе
+                    const userDisplayName = document.getElementById('user-display-name');
+                    if (userDisplayName) {
+                        userDisplayName.textContent = response.displayName || response.username;
+                    }
+                    
+                    // Устанавливаем аватар пользователя
+                    const userAvatar = document.getElementById('user-avatar');
+                    if (userAvatar && response.avatarUrl) {
+                        userAvatar.src = response.avatarUrl;
+                        userAvatar.style.display = 'block';
+                    }
+                } else {
+                    messageElement.classList.remove('success');
+                    messageElement.classList.add('error');
+                }
+            }
         });
     }
 

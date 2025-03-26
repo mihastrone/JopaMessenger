@@ -104,6 +104,10 @@
                 </div>
                 
                 <div class="auth-form" id="register-tab" style="display: none;">
+                    <h2>Регистрация</h2>
+                    <div class="alert alert-info">
+                        <strong>Временный режим!</strong> Сервер работает в упрощенном режиме регистрации.
+                    </div>
                     <div class="avatar-upload-container">
                         <div class="avatar-preview">
                             <img id="register-avatar-preview" src="/uploads/default-avatar.png" alt="Аватар">
@@ -117,6 +121,12 @@
                     <input type="text" id="register-display-name" placeholder="Отображаемое имя" maxlength="20">
                     <input type="password" id="register-password" placeholder="Пароль">
                     <input type="password" id="register-password-confirm" placeholder="Подтвердите пароль">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" value="" id="simple-mode" checked>
+                        <label class="form-check-label" for="simple-mode">
+                            Упрощенный режим (без сохранения файлов)
+                        </label>
+                    </div>
                     <button id="register-button">Зарегистрироваться</button>
                 </div>
                 

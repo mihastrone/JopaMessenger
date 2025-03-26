@@ -51,16 +51,73 @@ class UserManager {
     }
   }
   
-  // Инициализация данных
-  init() {
-    this.loadUsers();
-    this.loadBannedUsers();
-    this.loadAdmins();
-    this.loadRooms();
-    this.loadUserAvatars();
+  // Функция для проверки доступа к файлу
+  isFileWritable(filePath) {
+    // Проверяем существование файла
+    const exists = fs.existsSync(filePath);
     
-    // Настраиваем автоматическое сохранение данных
-    this.setupAutoSave();
+    if (exists) {
+      try {
+        // Проверяем возможность записи в существующий файл
+        fs.accessSync(filePath, fs.constants.W_OK);
+        console.log(`Файл ${filePath} доступен для записи`);
+        return true;
+      } catch (err) {
+        console.error(`Файл ${filePath} существует, но не доступен для записи:`, err);
+        return false;
+      }
+    } else {
+      try {
+        // Если файл не существует, проверяем возможность создания
+        const dirPath = path.dirname(filePath);
+        
+        if (!fs.existsSync(dirPath)) {
+          fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
+        // Создаем тестовый файл
+        fs.writeFileSync(filePath, '{}', 'utf8');
+        console.log(`Тестовый файл ${filePath} успешно создан`);
+        return true;
+      } catch (err) {
+        console.error(`Не удалось создать файл ${filePath}:`, err);
+        return false;
+      }
+    }
+  }
+  
+  // Обновляю метод init для корректной загрузки данных
+  init() {
+    console.log('Инициализация UserManager...');
+    
+    // Проверяем доступ к файлам
+    console.log('Проверка доступа к файлам данных...');
+    this.isFileWritable(USERS_FILE);
+    this.isFileWritable(BANNED_USERS_FILE);
+    this.isFileWritable(ADMINS_FILE);
+    this.isFileWritable(ROOMS_FILE);
+    this.isFileWritable(USER_AVATARS_FILE);
+    
+    // Загружаем существующие данные
+    console.log('Загрузка существующих данных...');
+    
+    try {
+      this.loadUsers();
+      this.loadBannedUsers();
+      this.loadAdmins();
+      this.loadRooms();
+      this.loadUserAvatars();
+      
+      // Проверка данных после загрузки
+      console.log(`После загрузки: ${Object.keys(this.userDatabase).length} пользователей, ${this.bannedUsers.size} забаненных пользователей, ${this.admins.size} администраторов, ${this.rooms.size} комнат, ${Object.keys(this.userAvatars).length} аватаров`);
+      
+      // Настраиваем автоматическое сохранение данных
+      this.setupAutoSave();
+      
+      console.log('Инициализация UserManager успешно завершена');
+    } catch (error) {
+      console.error('ОШИБКА при инициализации UserManager:', error);
+    }
     
     return this;
   }
@@ -142,46 +199,38 @@ class UserManager {
   
   // Загрузка комнат из файла
   loadRooms() {
-    if (!this.Room) {
-      console.error('Класс Room не определен в опциях UserManager');
-      return this.rooms;
-    }
-    
     try {
       if (fs.existsSync(ROOMS_FILE)) {
         const roomsData = fs.readFileSync(ROOMS_FILE, 'utf8');
-        const roomsArray = JSON.parse(roomsData);
-        
-        // Очищаем текущие данные
-        this.rooms.clear();
-        
-        // Создаем объекты комнат из данных
-        roomsArray.forEach(roomData => {
-          const room = new this.Room(roomData.id, roomData.name, roomData.creator);
+        try {
+          const roomsArray = JSON.parse(roomsData);
           
-          // Преобразовываем массив членов в Set
-          room.members = new Set(roomData.members || []);
-          
-          // Устанавливаем другие свойства
-          room.autoDeleteEnabled = roomData.autoDeleteEnabled;
-          room.messageLifetime = roomData.messageLifetime;
-          room.messages = roomData.messages || [];
-          
-          // Добавляем комнату в Map
-          this.rooms.set(roomData.id, room);
-        });
-        
-        console.log(`Загружено ${this.rooms.size} комнат`);
+          // Проверяем, действительно ли это массив
+          if (Array.isArray(roomsArray)) {
+            this.rooms = new Map();
+            roomsArray.forEach(room => {
+              this.rooms.set(room.id, room);
+            });
+            console.log(`Загружены данные о ${this.rooms.size} комнатах`);
+          } else {
+            console.log('Файл комнат содержит некорректные данные (не массив), создаем новый');
+            this.rooms = new Map();
+            this.saveRooms();
+          }
+        } catch (parseError) {
+          console.log('Ошибка при парсинге файла комнат:', parseError.message);
+          this.rooms = new Map();
+          this.saveRooms();
+        }
       } else {
-        // Создаем пустой файл комнат
-        fs.writeFileSync(ROOMS_FILE, JSON.stringify([]), 'utf8');
-        console.log('Создан новый файл комнат');
+        console.log('Файл комнат не существует, создаем новый');
+        this.rooms = new Map();
+        this.saveRooms();
       }
     } catch (error) {
-      console.error(`Ошибка при загрузке комнат: ${error.message}`);
+      console.log('Ошибка при работе с файлом комнат:', error.message);
+      this.rooms = new Map();
     }
-    
-    return this.rooms;
   }
   
   // Загрузка аватаров пользователей
@@ -266,22 +315,24 @@ class UserManager {
   // Сохранение комнат в файл
   saveRooms() {
     try {
-      // Преобразуем Map в массив объектов для сохранения
+      // Преобразуем Map в массив для хранения
       const roomsArray = Array.from(this.rooms.values()).map(room => {
-        // Возвращаем сериализуемый объект комнаты
-        return {
-          id: room.id,
-          name: room.name,
-          creator: room.creator,
-          members: Array.from(room.members),
-          autoDeleteEnabled: room.autoDeleteEnabled,
-          messageLifetime: room.messageLifetime,
-          messages: room.messages // Сохраняем историю сообщений комнаты
-        };
+        // Если у комнаты есть метод toJSON, используем его
+        if (typeof room.toJSON === 'function') {
+          return room.toJSON();
+        }
+        
+        // Иначе просто возвращаем объект комнаты
+        // Если у комнаты есть свойство members типа Set, преобразуем его в массив
+        const roomData = { ...room };
+        if (roomData.members instanceof Set) {
+          roomData.members = Array.from(roomData.members);
+        }
+        return roomData;
       });
       
-      fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsArray), 'utf8');
-      console.log('Данные комнат сохранены');
+      fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsArray, null, 2), 'utf8');
+      console.log(`Сохранено ${roomsArray.length} комнат`);
     } catch (error) {
       console.error(`Ошибка при сохранении комнат: ${error.message}`);
     }
