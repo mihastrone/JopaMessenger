@@ -81,6 +81,35 @@ let userAvatars = {};
 // Инициализация карты комнат
 let rooms = new Map();
 
+// Класс для приватных комнат
+class Room {
+  constructor(id, name, creator) {
+    this.id = id;
+    this.name = name;
+    this.creator = creator;
+    this.members = new Set([creator]);
+    this.messages = [];
+    this.autoDeleteEnabled = true;
+    this.messageLifetime = DEFAULT_MESSAGE_LIFETIME;
+  }
+}
+
+// Класс для сообщений с расширенными атрибутами
+class Message {
+  constructor(id, user, text, timestamp, roomId = null, autoDelete = false, lifetime = DEFAULT_MESSAGE_LIFETIME, image = null, displayName = null, avatar = null) {
+    this.id = id;
+    this.user = user;
+    this.text = text;
+    this.timestamp = timestamp;
+    this.roomId = roomId;
+    this.autoDelete = autoDelete;
+    this.lifetime = lifetime;
+    this.image = image; // Добавляем поле для хранения изображения
+    this.displayName = displayName; // Добавляем отображаемое имя
+    this.avatar = avatar; // Добавляем аватар пользователя
+  }
+}
+
 // Загрузка списка администраторов из файла
 let admins = new Set();
 try {
@@ -332,35 +361,6 @@ const users = {}; // Хранит socketId -> username
 const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
 
-// Класс для сообщений с расширенными атрибутами
-class Message {
-  constructor(id, user, text, timestamp, roomId = null, autoDelete = false, lifetime = DEFAULT_MESSAGE_LIFETIME, image = null, displayName = null, avatar = null) {
-    this.id = id;
-    this.user = user;
-    this.text = text;
-    this.timestamp = timestamp;
-    this.roomId = roomId;
-    this.autoDelete = autoDelete;
-    this.lifetime = lifetime;
-    this.image = image; // Добавляем поле для хранения изображения
-    this.displayName = displayName; // Добавляем отображаемое имя
-    this.avatar = avatar; // Добавляем аватар пользователя
-  }
-}
-
-// Класс для приватных комнат - объявляем раньше, чем используем
-class Room {
-  constructor(id, name, creator) {
-    this.id = id;
-    this.name = name;
-    this.creator = creator;
-    this.members = new Set([creator]);
-    this.messages = [];
-    this.autoDeleteEnabled = true;
-    this.messageLifetime = DEFAULT_MESSAGE_LIFETIME;
-  }
-}
-
 // Функция для удаления сообщения из истории
 function scheduleMessageDeletion(messageId, lifetime) {
   // Отменяем существующий таймер, если он есть
@@ -525,6 +525,38 @@ function getRoomMessagesForAdmin(roomId) {
     messages: room.messages,
     roomName: room.name
   };
+}
+
+// Функция для обновления списка забаненных пользователей у всех админов
+function updateAdminsWithBannedList() {
+  const bannedList = getBannedUsers();
+  
+  // Отправляем обновленный список всем админам
+  for (const username of admins) {
+    if (activeUsers[username]) {
+      const socketId = activeUsers[username].socketId;
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('banned_users_list', bannedList);
+      }
+    }
+  }
+}
+
+// Функция для обновления списка приватных комнат у всех админов
+function updateAdminsWithRoomsList() {
+  const roomsList = getPrivateRooms();
+  
+  // Отправляем обновленный список всем админам
+  for (const username of admins) {
+    if (activeUsers[username]) {
+      const socketId = activeUsers[username].socketId;
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('private_rooms_list', roomsList);
+      }
+    }
+  }
 }
 
 // Для отладки подключений
