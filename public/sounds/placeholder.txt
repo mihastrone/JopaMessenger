@@ -1,0 +1,1 @@
+Замените этот файл на MP3 звуки со следующими именами: send-1.mp3, send-2.mp3, send-3.mp3, receive-1.mp3, receive-2.mp3, receive-3.mp3

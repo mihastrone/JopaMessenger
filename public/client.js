@@ -19,9 +19,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let messageLifetime = 30000; // 30 секунд по умолчанию
     const COUNTDOWN_UPDATE_INTERVAL = 1000; // 1 секунда
 
+    // Настройки звуков
+    let soundSettings = {
+        enabled: true,
+        volume: 0.7,
+        sendSound: 'send-1.mp3',
+        receiveSound: 'receive-1.mp3',
+        sendCustomSound: null,
+        receiveCustomSound: null
+    };
+
     let socket;
     let username = '';
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
+    
+    // Флаг для определения, нужно ли автоматически прокручивать чат
+    let shouldScrollToBottom = true;
     
     // Загрузка настроек из localStorage
     function loadSettings() {
@@ -42,8 +55,79 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('messageLifetime', messageLifetime);
     }
     
+    // Загрузка настроек звуков
+    function loadSoundSettings() {
+        if (localStorage.getItem('soundSettings')) {
+            try {
+                soundSettings = JSON.parse(localStorage.getItem('soundSettings'));
+                console.log('Звуковые настройки загружены:', soundSettings);
+            } catch (error) {
+                console.error('Ошибка при загрузке звуковых настроек:', error);
+            }
+        }
+    }
+    
+    // Воспроизведение звука отправки сообщения
+    function playSendSound() {
+        if (!soundSettings.enabled) return;
+        
+        try {
+            const audio = soundSettings.sendSound === 'custom' && soundSettings.sendCustomSound 
+                ? new Audio(soundSettings.sendCustomSound) 
+                : new Audio(`sounds/${soundSettings.sendSound}`);
+            
+            audio.volume = soundSettings.volume;
+            audio.play().catch(error => console.error('Ошибка воспроизведения звука:', error));
+        } catch (error) {
+            console.error('Ошибка при воспроизведении звука отправки:', error);
+        }
+    }
+    
+    // Воспроизведение звука получения сообщения
+    function playReceiveSound() {
+        if (!soundSettings.enabled) return;
+        
+        try {
+            const audio = soundSettings.receiveSound === 'custom' && soundSettings.receiveCustomSound 
+                ? new Audio(soundSettings.receiveCustomSound) 
+                : new Audio(`sounds/${soundSettings.receiveSound}`);
+            
+            audio.volume = soundSettings.volume;
+            audio.play().catch(error => console.error('Ошибка воспроизведения звука:', error));
+        } catch (error) {
+            console.error('Ошибка при воспроизведении звука получения:', error);
+        }
+    }
+    
+    // Обновление настроек звука из окна настроек
+    window.updateSoundSettings = function(newSettings) {
+        soundSettings = newSettings;
+        console.log('Звуковые настройки обновлены:', soundSettings);
+    };
+    
+    // Открытие окна настроек звука
+    function openSoundSettings() {
+        const width = 650;
+        const height = 700;
+        const left = (window.innerWidth - width) / 2;
+        const top = (window.innerHeight - height) / 2;
+        
+        const settingsWindow = window.open(
+            'sound-settings.html',
+            'sound_settings',
+            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+        );
+        
+        if (settingsWindow) {
+            settingsWindow.focus();
+        } else {
+            alert('Пожалуйста, разрешите всплывающие окна для этого сайта, чтобы открыть настройки звука.');
+        }
+    }
+    
     // Загружаем настройки при загрузке страницы
     loadSettings();
+    loadSoundSettings();
     
     // Обработчики событий для настроек
     autoDeleteToggle.addEventListener('change', () => {
@@ -217,8 +301,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Получение нового сообщения
         socket.on('new-message', (message) => {
+            const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+            
+            // Играем звук только для чужих сообщений
+            if (message.user !== username) {
+                playReceiveSound();
+            }
+            
             addMessageToUI(message);
-            scrollToBottom();
+            
+            // Прокручиваем вниз только если пользователь был внизу
+            if (shouldScrollToBottom || message.user === username) {
+                scrollToBottom();
+            }
         });
 
         // Обновление списка пользователей
@@ -363,7 +458,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Прокрутка чата вниз
     function scrollToBottom() {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        // Задержка для корректной работы скролла после рендеринга сообщения
+        setTimeout(() => {
+            if (messagesContainer) {
+                messagesContainer.scrollTo({
+                    top: messagesContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }, 0);
     }
 
     // Экранирование HTML
@@ -404,6 +507,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         connectToServer();
+        
+        // Добавляем кнопку настроек звука после успешного входа
+        setTimeout(addSoundSettingsButton, 1000);
     });
 
     // Вход по нажатию Enter
@@ -441,6 +547,37 @@ document.addEventListener('DOMContentLoaded', () => {
             lifetime: messageLifetime
         });
         
+        // Воспроизводим звук отправки
+        playSendSound();
+        
         messageInput.value = '';
+    }
+
+    // Обработчик прокрутки чата
+    messagesContainer.addEventListener('scroll', () => {
+        // Проверяем, находится ли пользователь близко к нижней части чата
+        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+        shouldScrollToBottom = isAtBottom;
+    });
+
+    // Добавляем кнопку настроек звука в верхнюю панель
+    function addSoundSettingsButton() {
+        const serverInfo = document.querySelector('.server-info');
+        if (!serverInfo) return;
+        
+        const soundSettingsButton = document.createElement('button');
+        soundSettingsButton.className = 'sound-settings-button';
+        soundSettingsButton.innerHTML = '🔊';
+        soundSettingsButton.title = 'Настройки звука';
+        soundSettingsButton.style.backgroundColor = 'transparent';
+        soundSettingsButton.style.border = 'none';
+        soundSettingsButton.style.color = 'white';
+        soundSettingsButton.style.fontSize = '1.2rem';
+        soundSettingsButton.style.cursor = 'pointer';
+        soundSettingsButton.style.marginLeft = '10px';
+        
+        soundSettingsButton.addEventListener('click', openSoundSettings);
+        
+        serverInfo.appendChild(soundSettingsButton);
     }
 }); 
