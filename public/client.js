@@ -46,9 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
         enabled: true,
         volume: 0.7,
         sendSound: 'send-1.mp3',
-        receiveSound: 'receive-1.mp3',
-        sendCustomSound: null,
-        receiveCustomSound: null
+        receiveSound: 'Message_get.wav'
     };
 
     let socket;
@@ -77,6 +75,22 @@ document.addEventListener('DOMContentLoaded', () => {
             messageLifetime = parseInt(localStorage.getItem('messageLifetime'));
             deleteTimeSelect.value = messageLifetime.toString();
         }
+        
+        // Загружаем сохранённую тему
+        if (localStorage.getItem('theme')) {
+            const savedTheme = localStorage.getItem('theme');
+            document.querySelector('#theme-select').value = savedTheme;
+            applyTheme(savedTheme);
+        }
+        
+        // Загрузка настроек звука
+        if (localStorage.getItem('soundEnabled') !== null) {
+            soundSettings.enabled = localStorage.getItem('soundEnabled') === 'true';
+        }
+        
+        if (localStorage.getItem('soundVolume') !== null) {
+            soundSettings.volume = parseFloat(localStorage.getItem('soundVolume'));
+        }
     }
     
     // Сохранение настроек в localStorage
@@ -84,7 +98,25 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('rooms', JSON.stringify(Array.from(rooms.entries())));
         localStorage.setItem('autoDeleteEnabled', autoDeleteEnabled);
         localStorage.setItem('messageLifetime', messageLifetime);
+        localStorage.setItem('soundEnabled', soundSettings.enabled);
+        localStorage.setItem('soundVolume', soundSettings.volume);
     }
+    
+    // Применение темы
+    function applyTheme(theme) {
+        if (theme === 'dark') {
+            document.body.classList.add('dark-theme');
+        } else {
+            document.body.classList.remove('dark-theme');
+        }
+    }
+    
+    // Обработчик изменения темы
+    document.querySelector('#theme-select').addEventListener('change', (e) => {
+        const theme = e.target.value;
+        localStorage.setItem('theme', theme);
+        applyTheme(theme);
+    });
     
     // Создание новой приватной комнаты
     function createPrivateRoom() {
@@ -169,13 +201,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Загрузка настроек звуков
     function loadSoundSettings() {
-        if (localStorage.getItem('soundSettings')) {
-            try {
-                soundSettings = JSON.parse(localStorage.getItem('soundSettings'));
-                console.log('Звуковые настройки загружены:', soundSettings);
-            } catch (error) {
-                console.error('Ошибка при загрузке звуковых настроек:', error);
-            }
+        if (localStorage.getItem('soundEnabled') !== null) {
+            soundSettings.enabled = localStorage.getItem('soundEnabled') === 'true';
+        }
+        
+        if (localStorage.getItem('soundVolume') !== null) {
+            soundSettings.volume = parseFloat(localStorage.getItem('soundVolume'));
         }
     }
     
@@ -184,10 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!soundSettings.enabled) return;
         
         try {
-            const audio = soundSettings.sendSound === 'custom' && soundSettings.sendCustomSound 
-                ? new Audio(soundSettings.sendCustomSound) 
-                : new Audio(`sounds/${soundSettings.sendSound}`);
-            
+            const audio = new Audio(`sounds/${soundSettings.sendSound}`);
             audio.volume = soundSettings.volume;
             audio.play().catch(error => console.error('Ошибка воспроизведения звука:', error));
         } catch (error) {
@@ -200,10 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!soundSettings.enabled) return;
         
         try {
-            const audio = soundSettings.receiveSound === 'custom' && soundSettings.receiveCustomSound 
-                ? new Audio(soundSettings.receiveCustomSound) 
-                : new Audio(`sounds/${soundSettings.receiveSound}`);
-            
+            const audio = new Audio(`sounds/${soundSettings.receiveSound}`);
             audio.volume = soundSettings.volume;
             audio.play().catch(error => console.error('Ошибка воспроизведения звука:', error));
         } catch (error) {
@@ -211,30 +236,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Обновление настроек звука из окна настроек
-    window.updateSoundSettings = function(newSettings) {
-        soundSettings = newSettings;
-        console.log('Звуковые настройки обновлены:', soundSettings);
-    };
-    
-    // Открытие окна настроек звука
-    function openSoundSettings() {
-        const width = 650;
-        const height = 700;
-        const left = (window.innerWidth - width) / 2;
-        const top = (window.innerHeight - height) / 2;
+    // Добавляем кнопку настроек звука в верхнюю панель
+    function addSoundSettingsButton() {
+        const serverInfo = document.querySelector('.server-info');
+        if (!serverInfo) return;
         
-        const settingsWindow = window.open(
-            'sound-settings.html',
-            'sound_settings',
-            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-        );
+        const soundToggleButton = document.createElement('button');
+        soundToggleButton.className = 'sound-settings-button';
+        soundToggleButton.innerHTML = soundSettings.enabled ? '🔊' : '🔇';
+        soundToggleButton.title = soundSettings.enabled ? 'Выключить звук' : 'Включить звук';
+        soundToggleButton.style.backgroundColor = 'transparent';
+        soundToggleButton.style.border = 'none';
+        soundToggleButton.style.color = 'white';
+        soundToggleButton.style.fontSize = '1.2rem';
+        soundToggleButton.style.cursor = 'pointer';
+        soundToggleButton.style.marginLeft = '10px';
         
-        if (settingsWindow) {
-            settingsWindow.focus();
-        } else {
-            alert('Пожалуйста, разрешите всплывающие окна для этого сайта, чтобы открыть настройки звука.');
-        }
+        soundToggleButton.addEventListener('click', () => {
+            soundSettings.enabled = !soundSettings.enabled;
+            soundToggleButton.innerHTML = soundSettings.enabled ? '🔊' : '🔇';
+            soundToggleButton.title = soundSettings.enabled ? 'Выключить звук' : 'Включить звук';
+            saveSettings();
+        });
+        
+        serverInfo.appendChild(soundToggleButton);
     }
     
     // Настройка обработчиков событий сокета
@@ -611,27 +636,6 @@ document.addEventListener('DOMContentLoaded', () => {
         shouldScrollToBottom = isAtBottom;
     });
 
-    // Добавляем кнопку настроек звука в верхнюю панель
-    function addSoundSettingsButton() {
-        const serverInfo = document.querySelector('.server-info');
-        if (!serverInfo) return;
-        
-        const soundSettingsButton = document.createElement('button');
-        soundSettingsButton.className = 'sound-settings-button';
-        soundSettingsButton.innerHTML = '🔊';
-        soundSettingsButton.title = 'Настройки звука';
-        soundSettingsButton.style.backgroundColor = 'transparent';
-        soundSettingsButton.style.border = 'none';
-        soundSettingsButton.style.color = 'white';
-        soundSettingsButton.style.fontSize = '1.2rem';
-        soundSettingsButton.style.cursor = 'pointer';
-        soundSettingsButton.style.marginLeft = '10px';
-        
-        soundSettingsButton.addEventListener('click', openSoundSettings);
-        
-        serverInfo.appendChild(soundSettingsButton);
-    }
-
     // Функция подключения к серверу
     function connectToServer() {
         // В облачном хостинге будем использовать текущее положение
@@ -756,6 +760,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        processImageFile(file);
+    });
+    
+    // Функция обработки файла изображения
+    function processImageFile(file) {
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = new Image();
@@ -770,6 +779,118 @@ document.addEventListener('DOMContentLoaded', () => {
             img.src = event.target.result;
         };
         reader.readAsDataURL(file);
+    }
+    
+    // Добавляем поддержку drag-n-drop
+    const dropZone = messagesContainer.parentElement; // Используем чат-контейнер как зону для перетаскивания
+    const messageInputContainer = document.querySelector('.message-input-container');
+    
+    // Индикатор для отображения активной зоны перетаскивания
+    const dropIndicator = document.createElement('div');
+    dropIndicator.className = 'drop-indicator';
+    dropIndicator.innerHTML = `
+        <div class="drop-indicator-content">
+            <div class="drop-icon">📁</div>
+            <div class="drop-text">Перетащите изображение сюда</div>
+        </div>
+    `;
+    dropIndicator.style.display = 'none';
+    document.querySelector('.chat-main').appendChild(dropIndicator);
+    
+    // Счетчик для отслеживания входов/выходов при перетаскивании
+    let dragCounter = 0;
+    
+    // Показать индикатор перетаскивания
+    function showDropIndicator() {
+        dropIndicator.style.display = 'flex';
+    }
+    
+    // Скрыть индикатор перетаскивания
+    function hideDropIndicator() {
+        dropIndicator.style.display = 'none';
+    }
+    
+    // Функция для обработки события перетаскивания файла
+    function handleFileDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter = 0;
+        hideDropIndicator();
+        
+        const files = e.dataTransfer.files;
+        if (files.length) {
+            const file = files[0]; // Берем только первый файл
+            
+            // Проверка типа файла
+            if (!file.type.match('image.*')) {
+                alert('Пожалуйста, перетащите изображение');
+                return;
+            }
+            
+            processImageFile(file);
+        }
+    }
+    
+    // Обработчики событий drag-n-drop для области сообщений
+    dropZone.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter++;
+        showDropIndicator();
+    });
+    
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter--;
+        if (dragCounter === 0) {
+            hideDropIndicator();
+        }
+    });
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    
+    dropZone.addEventListener('drop', handleFileDrop);
+    
+    // Дополнительно добавляем поддержку перетаскивания в область ввода сообщений
+    messageInputContainer.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter++;
+        showDropIndicator();
+    });
+    
+    messageInputContainer.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter--;
+        if (dragCounter === 0) {
+            hideDropIndicator();
+        }
+    });
+    
+    messageInputContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    
+    messageInputContainer.addEventListener('drop', handleFileDrop);
+    
+    // Также поддерживаем вставку изображений из буфера обмена
+    messageInput.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        
+        for (const item of items) {
+            if (item.type.indexOf('image') === 0) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                processImageFile(file);
+                break;
+            }
+        }
     });
     
     // Кнопка удаления изображения
@@ -779,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
         imagePreviewContainer.style.display = 'none';
         imageUpload.value = '';
     });
-    
+
     // Оптимизация изображения
     function optimizeImage(img, fileType) {
         const canvas = document.createElement('canvas');
