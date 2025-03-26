@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let messageLifetime = 30000; // 30 секунд по умолчанию
     const COUNTDOWN_UPDATE_INTERVAL = 1000; // 1 секунда
 
-    // Настройки звуков
+    // Настройки звуков - удаляем
     let soundSettings = {
         enabled: true,
         volume: 0.5,
@@ -442,11 +442,6 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('new-message', (message) => {
             const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
             
-            // Играем звук только для чужих сообщений
-            if (message.user !== username) {
-                playReceiveSound();
-            }
-            
             const messageElement = addMessageToUI(message);
             
             // Если это сообщение для общего чата, добавляем его в кэш
@@ -492,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('room_deleted', ({ roomId, roomName }) => {
             addSystemMessageToUI(`Комната удалена: ${roomName}`);
             if (currentRoom === roomId) {
-                currentRoom = null;
+                currentRoom = 'general';
                 messagesContainer.innerHTML = '';
                 
                 // Загружаем сообщения общего чата
@@ -604,22 +599,18 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="message-content">${formattedMessage}</div>
             ${imageHtml}
-            ${currentRoom ? `<div id="countdown-${message.timestamp}" class="countdown"></div>` : ''}
+            ${currentRoom !== 'general' ? `<div id="countdown-${message.timestamp}" class="countdown"></div>` : ''}
         `;
         
         messagesContainer.appendChild(messageElement);
         
-        if (currentRoom && rooms.get(currentRoom)?.autoDeleteEnabled) {
+        // Настраиваем автоудаление только для комнат, не для общего чата
+        if (currentRoom !== 'general' && rooms.get(currentRoom)?.autoDeleteEnabled) {
             setupMessageDeletion(message.timestamp);
         }
         
         if (shouldScrollToBottom) {
             scrollToBottom();
-        }
-        
-        // Воспроизводим звук только для чужих сообщений
-        if (!isOwnMessage) {
-            playReceiveSound();
         }
         
         return messageElement;
@@ -832,8 +823,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuthTabs();
     checkSavedCredentials();
     
-    // Инициализация только звуковых настроек на старте
-    loadSoundSettings();
+    // Удаляем комментарий о звуковых настройках
     initializeUI();
     
     // Добавление обработчика отправки сообщений для формы
@@ -863,84 +853,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Воспроизведение звука отправки сообщения
-    function playSendSound() {
-        if (!soundSettings.enabled) return;
-        
-        const audio = new Audio(`sounds/${soundSettings.sendSound}`);
-        audio.volume = soundSettings.volume;
-        audio.play().catch(error => {
-            console.error('Ошибка воспроизведения звука отправки:', error);
-        });
-    }
-    
-    // Воспроизведение звука получения сообщения
-    function playReceiveSound() {
-        if (!soundSettings.enabled) return;
-        
-        const audio = new Audio(`sounds/${soundSettings.receiveSound}`);
-        audio.volume = soundSettings.volume;
-        audio.play().catch(error => {
-            console.error('Ошибка воспроизведения звука получения:', error);
-        });
-    }
-    
-    // Добавление кнопки настроек звука
-    function addSoundSettingsButton() {
-        const settingsPanel = document.querySelector('.settings-panel');
-        if (!settingsPanel) return;
-        
-        // Создаем элемент настроек звука, если его ещё нет
-        if (!document.getElementById('sound-settings')) {
-            const soundSettingsHtml = `
-                <div class="setting-item" id="sound-settings">
-                    <label>Звук:</label>
-                    <div class="toggle-switch">
-                        <input type="checkbox" id="sound-toggle" ${soundSettings.enabled ? 'checked' : ''}>
-                        <span class="toggle-slider"></span>
-                    </div>
-                </div>
-            `;
-            
-            // Добавляем в панель настроек
-            const div = document.createElement('div');
-            div.innerHTML = soundSettingsHtml;
-            settingsPanel.appendChild(div.firstElementChild);
-            
-            // Обработчик переключения звука
-            const soundToggle = document.getElementById('sound-toggle');
-            if (soundToggle) {
-                soundToggle.addEventListener('change', (e) => {
-                    soundSettings.enabled = e.target.checked;
-                    saveSoundSettings();
-                });
-            }
-        }
-    }
-    
-    // Сохранение настроек звука
-    function saveSoundSettings() {
-        localStorage.setItem('sound_settings', JSON.stringify(soundSettings));
-    }
-    
-    // Загрузка настроек звука
-    function loadSoundSettings() {
-        try {
-            const saved = JSON.parse(localStorage.getItem('sound_settings'));
-            if (saved) {
-                soundSettings = { ...soundSettings, ...saved };
-            }
-        } catch (error) {
-            console.error('Ошибка при загрузке настроек звука:', error);
-        }
-    }
-
-    // Вызываем добавление кнопки настроек звука в функции initializeUI
+    // Функция инициализации интерфейса
     function initializeUI() {
         setupRoomHandlers();
         setupThemeHandler();
         setupOtherImageHandlers();
-        addSoundSettingsButton();
     }
     
     // Настройка обработчиков комнат
@@ -974,34 +891,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // Обработчик списка комнат
-        if (roomsList) {
-            roomsList.addEventListener('click', (e) => {
-                if (e.target.classList.contains('room-button')) {
-                    const roomId = e.target.dataset.roomid;
-                    
-                    if (currentRoom === roomId) {
-                        // Выход из комнаты при повторном клике
-                        leaveRoom();
-                    } else {
-                        // Вход в комнату
-                        joinRoom(roomId);
-                    }
-                } else if (e.target.classList.contains('room-delete')) {
-                    const roomId = e.target.dataset.roomid;
-                    if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
-                        socket.emit('delete_room', { roomId });
-                    }
-                }
-            });
-        }
+        // Обработчик списка комнат (переносим в функцию, чтобы не дублировать код)
+        setupRoomListHandlers();
         
         // Обработчики автоудаления
         if (autoDeleteToggle) {
             autoDeleteToggle.addEventListener('change', (e) => {
                 autoDeleteEnabled = e.target.checked;
                 
-                if (currentRoom) {
+                if (currentRoom && currentRoom !== 'general') {
                     const room = rooms.get(currentRoom);
                     if (room) {
                         room.autoDeleteEnabled = autoDeleteEnabled;
@@ -1016,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             deleteTimeSelect.addEventListener('change', (e) => {
                 messageLifetime = parseInt(e.target.value);
                 
-                if (currentRoom) {
+                if (currentRoom && currentRoom !== 'general') {
                     const room = rooms.get(currentRoom);
                     if (room) {
                         room.messageLifetime = messageLifetime;
@@ -1029,6 +927,38 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Загружаем и обновляем список комнат
         updateRoomsList();
+    }
+    
+    // Отдельная функция для обработчиков комнат
+    function setupRoomListHandlers() {
+        if (!roomsList) return;
+        
+        // Сначала удаляем старые обработчики, чтобы избежать дублирования
+        const oldElement = roomsList;
+        const newElement = oldElement.cloneNode(true);
+        oldElement.parentNode.replaceChild(newElement, oldElement);
+        roomsList = newElement;
+        
+        // Добавляем новые обработчики
+        roomsList.addEventListener('click', function(e) {
+            if (e.target.classList.contains('room-button')) {
+                const roomId = e.target.dataset.roomid;
+                
+                if (currentRoom === roomId) {
+                    // Выход из комнаты при повторном клике
+                    leaveRoom();
+                } else {
+                    // Вход в комнату
+                    joinRoom(roomId);
+                }
+            } else if (e.target.classList.contains('room-delete')) {
+                const roomId = e.target.dataset.roomid;
+                if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
+                    console.log('Отправляю запрос на удаление комнаты:', roomId);
+                    socket.emit('delete_room', { roomId });
+                }
+            }
+        });
     }
     
     // Обновление списка комнат
@@ -1394,8 +1324,6 @@ document.addEventListener('DOMContentLoaded', () => {
             imagePreviewContainer.style.display = 'none';
             imageUpload.value = '';
         }
-        
-        playSendSound();
     }
 
     // Обработчик прокрутки чата
