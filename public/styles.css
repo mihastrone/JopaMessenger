@@ -648,13 +648,27 @@ input:checked + .toggle-slider:before {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(74, 144, 226, 0.6);
+    background-color: rgba(74, 144, 226, 0.8);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: 900;
     border-radius: 8px;
     pointer-events: none;
+    box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.5);
+    animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+    0% {
+        box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.5);
+    }
+    50% {
+        box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.3);
+    }
+    100% {
+        box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.5);
+    }
 }
 
 .drop-indicator-content {
@@ -676,12 +690,13 @@ input:checked + .toggle-slider:before {
 }
 
 .drop-icon {
-    font-size: 3rem;
+    font-size: 4rem;
     margin-bottom: 15px;
+    color: #4a90e2;
 }
 
 .drop-text {
-    font-size: 1.2rem;
+    font-size: 1.5rem;
     color: #4a90e2;
     font-weight: bold;
 }
@@ -780,4 +795,71 @@ input:checked + .toggle-slider:before {
 
 .dark-theme .footer {
     color: #999;
+}
+
+/* Стили для авторизации */
+.auth-tabs {
+    display: flex;
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.auth-tab-btn {
+    flex: 1;
+    padding: 12px;
+    text-align: center;
+    background-color: #f0f0f0;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 1rem;
+    border-bottom: 2px solid transparent;
+}
+
+.auth-tab-btn.active {
+    background-color: #fff;
+    border-bottom: 2px solid #4a90e2;
+    font-weight: bold;
+}
+
+.auth-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.remember-me {
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.remember-me label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.remember-me input {
+    margin-right: 8px;
+}
+
+/* Темная тема для формы авторизации */
+.dark-theme .auth-tab-btn {
+    background-color: #333;
+    color: #ddd;
+}
+
+.dark-theme .auth-tab-btn.active {
+    background-color: #222;
+    border-bottom-color: #77b6ff;
+}
+
+.dark-theme .remember-me {
+    color: #aaa;
 } 

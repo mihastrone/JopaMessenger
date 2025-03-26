@@ -2,15 +2,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // Элементы интерфейса
     const loginScreen = document.getElementById('login-screen');
     const chatScreen = document.getElementById('chat-screen');
-    const usernameInput = document.getElementById('username-input');
+    
+    // Элементы авторизации
+    const loginForm = document.getElementById('login-form');
+    const loginTab = document.getElementById('login-tab');
+    const registerTab = document.getElementById('register-tab');
+    const authTabs = document.querySelector('.auth-tabs');
+    
+    const loginUsername = document.getElementById('login-username');
+    const loginPassword = document.getElementById('login-password');
+    const rememberMe = document.getElementById('remember-me');
     const loginButton = document.getElementById('login-button');
+    
+    const registerUsername = document.getElementById('register-username');
+    const registerDisplayName = document.getElementById('register-display-name');
+    const registerPassword = document.getElementById('register-password');
+    const registerPasswordConfirm = document.getElementById('register-password-confirm');
+    const registerButton = document.getElementById('register-button');
+    
+    const connectionStatus = document.getElementById('connection-status');
+    
+    // Элементы чата
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const messagesContainer = document.getElementById('messages-container');
     const userList = document.getElementById('user-list');
     const userCount = document.getElementById('user-count');
     const connectedServer = document.getElementById('connected-server');
-    const connectionStatus = document.getElementById('connection-status');
     const createRoomButton = document.getElementById('create-room-button');
     const roomsList = document.getElementById('rooms-list');
     const autoDeleteToggle = document.getElementById('auto-delete-toggle');
@@ -28,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentRoom = null;
     let rooms = new Map(); // Хранилище комнат и их настроек
     let messageTimers = {}; // Хранилище таймеров для удаления сообщений
+    let cachedMessages = new Map(); // Кэш сообщений для каждой комнаты (включая общий чат)
     
     // Настройки изображений
     let currentImage = null;
@@ -50,217 +69,251 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     let socket;
-    let username = '';
     
     // Флаг для определения, нужно ли автоматически прокручивать чат
     let shouldScrollToBottom = true;
     
-    // Загрузка настроек из localStorage
-    function loadSettings() {
-        if (localStorage.getItem('rooms')) {
-            try {
-                rooms = new Map(JSON.parse(localStorage.getItem('rooms')));
-                updateRoomsList();
-            } catch (error) {
-                console.error('Ошибка при загрузке настроек комнат:', error);
+    // Авторизационные данные
+    let isLoggedIn = false;
+    let username = ''; // Логин для авторизации
+    let displayName = ''; // Имя, отображаемое в чате
+    
+    // Инициализация вкладок авторизации
+    function initAuthTabs() {
+        if (!authTabs) return;
+        
+        authTabs.addEventListener('click', (e) => {
+            if (e.target.classList.contains('auth-tab-btn')) {
+                const tab = e.target.dataset.tab;
+                
+                // Удаляем активный класс со всех кнопок и добавляем нужной
+                document.querySelectorAll('.auth-tab-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                e.target.classList.add('active');
+                
+                // Скрываем все табы и показываем нужный
+                document.querySelectorAll('.auth-form').forEach(form => {
+                    form.style.display = 'none';
+                });
+                
+                if (tab === 'login') {
+                    loginTab.style.display = 'flex';
+                } else if (tab === 'register') {
+                    registerTab.style.display = 'flex';
+                }
+            }
+        });
+    }
+    
+    // Проверка сохраненных учетных данных
+    function checkSavedCredentials() {
+        const savedUsername = localStorage.getItem('auth_username');
+        const savedPassword = localStorage.getItem('auth_password');
+        const savedDisplayName = localStorage.getItem('auth_displayName');
+        
+        if (savedUsername && savedPassword) {
+            console.log('Найдены сохраненные учетные данные');
+            loginUsername.value = savedUsername;
+            loginPassword.value = savedPassword;
+            rememberMe.checked = true;
+            
+            // Если есть сохраненное имя, автоматически авторизуемся
+            if (savedDisplayName) {
+                username = savedUsername;
+                displayName = savedDisplayName;
+                authenticateUser(username, savedPassword);
             }
         }
-        
-        if (localStorage.getItem('autoDeleteEnabled') !== null) {
-            autoDeleteEnabled = localStorage.getItem('autoDeleteEnabled') === 'true';
-            autoDeleteToggle.checked = autoDeleteEnabled;
-        }
-        
-        if (localStorage.getItem('messageLifetime') !== null) {
-            messageLifetime = parseInt(localStorage.getItem('messageLifetime'));
-            deleteTimeSelect.value = messageLifetime.toString();
-        }
-        
-        // Загружаем сохранённую тему
-        if (localStorage.getItem('theme')) {
-            const savedTheme = localStorage.getItem('theme');
-            document.querySelector('#theme-select').value = savedTheme;
-            applyTheme(savedTheme);
-        }
-        
-        // Загрузка настроек звука
-        if (localStorage.getItem('soundEnabled') !== null) {
-            soundSettings.enabled = localStorage.getItem('soundEnabled') === 'true';
-        }
-        
-        if (localStorage.getItem('soundVolume') !== null) {
-            soundSettings.volume = parseFloat(localStorage.getItem('soundVolume'));
-        }
     }
     
-    // Сохранение настроек в localStorage
-    function saveSettings() {
-        localStorage.setItem('rooms', JSON.stringify(Array.from(rooms.entries())));
-        localStorage.setItem('autoDeleteEnabled', autoDeleteEnabled);
-        localStorage.setItem('messageLifetime', messageLifetime);
-        localStorage.setItem('soundEnabled', soundSettings.enabled);
-        localStorage.setItem('soundVolume', soundSettings.volume);
-    }
-    
-    // Применение темы
-    function applyTheme(theme) {
-        if (theme === 'dark') {
-            document.body.classList.add('dark-theme');
+    // Сохранение учетных данных
+    function saveCredentials(username, password, displayName) {
+        if (rememberMe.checked) {
+            localStorage.setItem('auth_username', username);
+            localStorage.setItem('auth_password', password);
+            localStorage.setItem('auth_displayName', displayName);
+            console.log('Учетные данные сохранены');
         } else {
-            document.body.classList.remove('dark-theme');
+            localStorage.removeItem('auth_username');
+            localStorage.removeItem('auth_password');
+            localStorage.removeItem('auth_displayName');
+            console.log('Учетные данные удалены');
         }
     }
     
-    // Обработчик изменения темы
-    document.querySelector('#theme-select').addEventListener('change', (e) => {
-        const theme = e.target.value;
-        localStorage.setItem('theme', theme);
-        applyTheme(theme);
-    });
-    
-    // Создание новой приватной комнаты
-    function createPrivateRoom() {
-        const roomName = prompt('Введите название комнаты:');
-        if (!roomName) return;
+    // Аутентификация пользователя
+    function authenticateUser(username, password) {
+        // В облачном хостинге будем использовать текущее положение
+        const serverUrl = window.location.origin;
         
-        const roomId = Date.now().toString();
-        const roomSettings = {
-            name: roomName,
-            autoDeleteEnabled: true,
-            messageLifetime: 30000,
-            createdBy: username,
-            members: [username]
-        };
+        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
+        console.log('Подключение к серверу:', serverUrl);
         
-        rooms.set(roomId, roomSettings);
-        saveSettings();
-        updateRoomsList();
-        
-        socket.emit('create_room', { roomId, roomName, creator: username });
-    }
-    
-    // Обновление списка комнат в интерфейсе
-    function updateRoomsList() {
-        roomsList.innerHTML = '';
-        rooms.forEach((settings, roomId) => {
-            const li = document.createElement('li');
-            li.className = 'room-item';
-            if (currentRoom === roomId) li.classList.add('active');
-            
-            li.innerHTML = `
-                <span class="room-name">${settings.name}</span>
-                <div class="room-controls">
-                    <button class="join-room-btn" data-room-id="${roomId}">${currentRoom === roomId ? 'Выйти' : 'Войти'}</button>
-                    ${settings.createdBy === username ? `<button class="delete-room-btn" data-room-id="${roomId}">Удалить</button>` : ''}
-                </div>
-            `;
-            
-            roomsList.appendChild(li);
-        });
-    }
-    
-    // Обработчик создания комнаты
-    createRoomButton.addEventListener('click', createPrivateRoom);
-    
-    // Обработчик событий комнат
-    roomsList.addEventListener('click', (e) => {
-        const roomId = e.target.dataset.roomId;
-        if (!roomId) return;
-        
-        if (e.target.classList.contains('join-room-btn')) {
-            if (currentRoom === roomId) {
-                // Выход из комнаты
-                socket.emit('leave_room', { roomId });
-                currentRoom = null;
-                messagesContainer.innerHTML = '';
-                updateRoomsList();
-            } else {
-                // Вход в комнату
-                socket.emit('join_room', { roomId });
-                currentRoom = roomId;
-                updateRoomsList();
-            }
-        } else if (e.target.classList.contains('delete-room-btn')) {
-            if (confirm('Вы уверены, что хотите удалить эту комнату?')) {
-                socket.emit('delete_room', { roomId });
-                rooms.delete(roomId);
-                saveSettings();
-                updateRoomsList();
-            }
-        }
-    });
-    
-    // Обновление настроек комнаты
-    function updateRoomSettings(roomId, settings) {
-        if (rooms.has(roomId)) {
-            rooms.set(roomId, { ...rooms.get(roomId), ...settings });
-            saveSettings();
-            updateRoomsList();
-        }
-    }
-    
-    // Загрузка настроек звуков
-    function loadSoundSettings() {
-        if (localStorage.getItem('soundEnabled') !== null) {
-            soundSettings.enabled = localStorage.getItem('soundEnabled') === 'true';
-        }
-        
-        if (localStorage.getItem('soundVolume') !== null) {
-            soundSettings.volume = parseFloat(localStorage.getItem('soundVolume'));
-        }
-    }
-    
-    // Воспроизведение звука отправки сообщения
-    function playSendSound() {
-        if (!soundSettings.enabled) return;
+        // Обновляем индикатор статуса
+        updateConnectionStatus('connecting');
         
         try {
-            const audio = new Audio(`sounds/${soundSettings.sendSound}`);
-            audio.volume = soundSettings.volume;
-            audio.play().catch(error => console.error('Ошибка воспроизведения звука:', error));
+            // Настройки Socket.IO клиента
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000
+            });
+            
+            // Обновляем информацию о сервере
+            const serverName = window.location.hostname.split('.')[0];
+            connectedServer.textContent = serverName === 'localhost' ? 'локальный сервер' : serverName;
+            
+            // Обработчики событий Socket.io
+            setupSocketListeners();
+            
+            // Отправляем данные для авторизации
+            socket.emit('authenticate', { username, password, displayName });
+            
+            // Отладочные сообщения
+            socket.on('connect_error', (err) => {
+                console.error('Ошибка подключения Socket.IO:', err.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка подключения: ${err.message}</span>`;
+            });
+            
+            socket.on('reconnect_attempt', (attemptNumber) => {
+                connectionStatus.innerHTML = 
+                    `<span style="color:orange">Повторное подключение (${attemptNumber})...</span>`;
+            });
+            
+            socket.on('reconnect_failed', () => {
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Не удалось восстановить подключение</span>`;
+            });
+            
+            return true;
         } catch (error) {
-            console.error('Ошибка при воспроизведении звука отправки:', error);
+            console.error('Ошибка при создании Socket.IO клиента:', error);
+            connectionStatus.innerHTML = 
+                `<span style="color:red">Ошибка: ${error.message}</span>`;
+            return false;
         }
     }
     
-    // Воспроизведение звука получения сообщения
-    function playReceiveSound() {
-        if (!soundSettings.enabled) return;
+    // Регистрация нового пользователя
+    function registerUser() {
+        const username = registerUsername.value.trim();
+        const displayName = registerDisplayName.value.trim();
+        const password = registerPassword.value;
+        const passwordConfirm = registerPasswordConfirm.value;
+        
+        // Проверка введенных данных
+        if (!username) {
+            alert('Пожалуйста, введите логин');
+            return;
+        }
+        
+        if (!displayName) {
+            alert('Пожалуйста, введите отображаемое имя');
+            return;
+        }
+        
+        if (!password) {
+            alert('Пожалуйста, введите пароль');
+            return;
+        }
+        
+        if (password !== passwordConfirm) {
+            alert('Пароли не совпадают');
+            return;
+        }
+        
+        // Подключение к серверу и отправка запроса на регистрацию
+        const serverUrl = window.location.origin;
+        
+        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
+        console.log('Подключение к серверу для регистрации:', serverUrl);
         
         try {
-            const audio = new Audio(`sounds/${soundSettings.receiveSound}`);
-            audio.volume = soundSettings.volume;
-            audio.play().catch(error => console.error('Ошибка воспроизведения звука:', error));
+            // Настройки Socket.IO клиента
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000
+            });
+            
+            // Обновляем информацию о сервере
+            const serverName = window.location.hostname.split('.')[0];
+            connectedServer.textContent = serverName === 'localhost' ? 'локальный сервер' : serverName;
+            
+            // Обработчики событий Socket.io
+            setupSocketListeners();
+            
+            // Отправляем запрос на регистрацию
+            socket.emit('register_user', { username, displayName, password });
+            
+            return true;
         } catch (error) {
-            console.error('Ошибка при воспроизведении звука получения:', error);
+            console.error('Ошибка при создании Socket.IO клиента:', error);
+            connectionStatus.innerHTML = 
+                `<span style="color:red">Ошибка: ${error.message}</span>`;
+            return false;
         }
     }
     
-    // Добавляем кнопку настроек звука в верхнюю панель
-    function addSoundSettingsButton() {
-        const serverInfo = document.querySelector('.server-info');
-        if (!serverInfo) return;
+    // Обработчики событий авторизации
+    loginButton.addEventListener('click', () => {
+        const username = loginUsername.value.trim();
+        const password = loginPassword.value;
         
-        const soundToggleButton = document.createElement('button');
-        soundToggleButton.className = 'sound-settings-button';
-        soundToggleButton.innerHTML = soundSettings.enabled ? '🔊' : '🔇';
-        soundToggleButton.title = soundSettings.enabled ? 'Выключить звук' : 'Включить звук';
-        soundToggleButton.style.backgroundColor = 'transparent';
-        soundToggleButton.style.border = 'none';
-        soundToggleButton.style.color = 'white';
-        soundToggleButton.style.fontSize = '1.2rem';
-        soundToggleButton.style.cursor = 'pointer';
-        soundToggleButton.style.marginLeft = '10px';
+        if (!username) {
+            alert('Пожалуйста, введите логин');
+            return;
+        }
         
-        soundToggleButton.addEventListener('click', () => {
-            soundSettings.enabled = !soundSettings.enabled;
-            soundToggleButton.innerHTML = soundSettings.enabled ? '🔊' : '🔇';
-            soundToggleButton.title = soundSettings.enabled ? 'Выключить звук' : 'Включить звук';
-            saveSettings();
-        });
+        if (!password) {
+            alert('Пожалуйста, введите пароль');
+            return;
+        }
         
-        serverInfo.appendChild(soundToggleButton);
-    }
+        authenticateUser(username, password);
+    });
+    
+    registerButton.addEventListener('click', registerUser);
+    
+    // Обработчики нажатия Enter
+    loginUsername.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            loginPassword.focus();
+        }
+    });
+    
+    loginPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            loginButton.click();
+        }
+    });
+    
+    registerUsername.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerDisplayName.focus();
+        }
+    });
+    
+    registerDisplayName.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerPassword.focus();
+        }
+    });
+    
+    registerPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerPasswordConfirm.focus();
+        }
+    });
+    
+    registerPasswordConfirm.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            registerButton.click();
+        }
+    });
     
     // Настройка обработчиков событий сокета
     function setupSocketListeners() {
@@ -272,13 +325,66 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Обновляем индикатор статуса
             updateConnectionStatus('online');
-            
-            // Регистрируем пользователя
-            socket.emit('register', username);
-            
-            // Переключаемся на экран чата
-            loginScreen.style.display = 'none';
-            chatScreen.style.display = 'flex';
+        });
+        
+        // Авторизация
+        socket.on('auth_result', (result) => {
+            if (result.success) {
+                // Авторизация успешна
+                console.log('Авторизация успешна:', result.message);
+                
+                // Сохраняем данные пользователя
+                isLoggedIn = true;
+                username = result.username;
+                displayName = result.displayName;
+                
+                // Сохраняем учетные данные, если выбрано "Запомнить меня"
+                if (rememberMe.checked) {
+                    saveCredentials(username, loginPassword.value, displayName);
+                }
+                
+                // Переключаемся на экран чата
+                loginScreen.style.display = 'none';
+                chatScreen.style.display = 'flex';
+                
+                // Инициализируем UI
+                initializeUI();
+            } else {
+                // Ошибка авторизации
+                console.error('Ошибка авторизации:', result.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка авторизации: ${result.message}</span>`;
+            }
+        });
+        
+        // Регистрация
+        socket.on('registration_result', (result) => {
+            if (result.success) {
+                // Регистрация успешна
+                console.log('Регистрация успешна:', result.message);
+                
+                // Сохраняем данные пользователя
+                isLoggedIn = true;
+                username = registerUsername.value.trim();
+                displayName = registerDisplayName.value.trim();
+                
+                // Сохраняем учетные данные, если выбрано "Запомнить меня"
+                if (rememberMe.checked) {
+                    saveCredentials(username, registerPassword.value, displayName);
+                }
+                
+                // Переключаемся на экран чата
+                loginScreen.style.display = 'none';
+                chatScreen.style.display = 'flex';
+                
+                // Инициализируем UI
+                initializeUI();
+            } else {
+                // Ошибка регистрации
+                console.error('Ошибка регистрации:', result.message);
+                connectionStatus.innerHTML = 
+                    `<span style="color:red">Ошибка регистрации: ${result.message}</span>`;
+            }
         });
         
         // Тест подключения
@@ -313,9 +419,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Получение истории сообщений
         socket.on('message-history', (messages) => {
             messagesContainer.innerHTML = '';
+            
+            // Кэшируем сообщения общего чата
+            const messageElements = [];
+            
             messages.forEach(message => {
-                addMessageToUI(message);
+                const element = addMessageToUI(message);
+                messageElements.push(element.cloneNode(true));
             });
+            
+            cachedMessages.set('general', messageElements);
             scrollToBottom();
         });
 
@@ -328,7 +441,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 playReceiveSound();
             }
             
-            addMessageToUI(message);
+            const messageElement = addMessageToUI(message);
+            
+            // Если это сообщение для общего чата, добавляем его в кэш
+            if (currentRoom === null && messageElement) {
+                if (!cachedMessages.has('general')) {
+                    cachedMessages.set('general', []);
+                }
+                const generalMessages = cachedMessages.get('general');
+                generalMessages.push(messageElement.cloneNode(true));
+                cachedMessages.set('general', generalMessages);
+            }
             
             // Прокручиваем вниз только если пользователь был внизу
             if (shouldScrollToBottom || message.user === username) {
@@ -353,13 +476,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         socket.on('room_joined', ({ roomId, roomName }) => {
-            addSystemMessageToUI(`Вы присоединились к комнате: ${roomName}`);
-            messagesContainer.innerHTML = '';
+            // Сообщение будет добавлено в обработчике нажатия кнопки
         });
         
         socket.on('room_left', ({ roomId, roomName }) => {
-            addSystemMessageToUI(`Вы покинули комнату: ${roomName}`);
-            messagesContainer.innerHTML = '';
+            // Сообщение будет добавлено в обработчике нажатия кнопки
         });
         
         socket.on('room_deleted', ({ roomId, roomName }) => {
@@ -367,15 +488,56 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentRoom === roomId) {
                 currentRoom = null;
                 messagesContainer.innerHTML = '';
+                
+                // Загружаем сообщения общего чата
+                if (cachedMessages.has('general')) {
+                    const generalMessages = cachedMessages.get('general');
+                    generalMessages.forEach(msg => {
+                        messagesContainer.appendChild(msg.cloneNode(true));
+                    });
+                }
+                
+                // Оповещаем сервер, что нужно получить актуальные сообщения общего чата
+                socket.emit('get_messages');
             }
+            
+            // Удаляем комнату и её кэшированные сообщения
             rooms.delete(roomId);
+            if (cachedMessages.has(roomId)) {
+                cachedMessages.delete(roomId);
+            }
+            
             saveSettings();
             updateRoomsList();
         });
         
         socket.on('room_message', (message) => {
             if (message.roomId === currentRoom) {
-                addMessageToUI(message);
+                const messageElement = addMessageToUI(message);
+                
+                // Кэшируем сообщение для этой комнаты
+                if (messageElement) {
+                    if (!cachedMessages.has(currentRoom)) {
+                        cachedMessages.set(currentRoom, []);
+                    }
+                    const roomMessages = cachedMessages.get(currentRoom);
+                    roomMessages.push(messageElement.cloneNode(true));
+                    cachedMessages.set(currentRoom, roomMessages);
+                }
+            }
+        });
+        
+        // Обработка присоединения пользователя к комнате
+        socket.on('user_joined_room', ({ username, displayName, roomId, roomName }) => {
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} присоединился к комнате`);
+            }
+        });
+        
+        // Обработка выхода пользователя из комнаты
+        socket.on('user_left_room', ({ username, displayName, roomId, roomName }) => {
+            if (currentRoom === roomId) {
+                addSystemMessageToUI(`Пользователь ${displayName || username} покинул комнату`);
             }
         });
     }
@@ -402,9 +564,15 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
         
+        const isOwnMessage = message.user === username;
+        messageElement.classList.add(isOwnMessage ? 'own' : 'other');
+        
+        // Используем displayName если он есть, или username в качестве запасного варианта
+        const senderName = message.displayName || message.user;
+        
         messageElement.innerHTML = `
             <div class="message-header">
-                <span class="username">${escapeHtml(message.username || message.user)}</span>
+                <span class="username">${escapeHtml(senderName)}</span>
                 <span class="timestamp">${new Date(message.timestamp).toLocaleTimeString()}</span>
             </div>
             <div class="message-content">${formattedMessage}</div>
@@ -423,9 +591,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Воспроизводим звук только для чужих сообщений
-        if ((message.username || message.user) !== username) {
+        if (!isOwnMessage) {
             playReceiveSound();
         }
+        
+        return messageElement;
     }
     
     // Форматирование сообщения (обработка ссылок)
@@ -568,38 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Обработчики событий UI
-    loginButton.addEventListener('click', () => {
-        username = usernameInput.value.trim();
-        
-        if (!username) {
-            alert('Пожалуйста, введите имя пользователя');
-            return;
-        }
-        
-        connectToServer();
-        
-        // Добавляем кнопку настроек звука после успешного входа
-        setTimeout(addSoundSettingsButton, 1000);
-    });
-
-    // Вход по нажатию Enter
-    usernameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            loginButton.click();
-        }
-    });
-
-    // Отправка сообщения
-    sendButton.addEventListener('click', sendMessage);
-
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
+    // Модифицированная функция отправки сообщения
     function sendMessage() {
         const text = messageInput.value.trim();
         
@@ -609,6 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const message = {
             text,
             username,
+            displayName,
             timestamp: Date.now(),
             roomId: currentRoom,
             hasImage: !!currentImage,
@@ -636,331 +776,12 @@ document.addEventListener('DOMContentLoaded', () => {
         shouldScrollToBottom = isAtBottom;
     });
 
-    // Функция подключения к серверу
-    function connectToServer() {
-        // В облачном хостинге будем использовать текущее положение
-        const serverUrl = window.location.origin;
-        
-        connectionStatus.innerHTML = `<span style="color:orange">Подключение...</span>`;
-        console.log('Подключение к серверу:', serverUrl);
-        
-        // Обновляем индикатор статуса
-        updateConnectionStatus('connecting');
-        
-        try {
-            // Настройки Socket.IO клиента
-            socket = io(serverUrl, {
-                transports: ['websocket', 'polling'],
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000
-            });
-            
-            // Обновляем информацию о сервере
-            const serverName = window.location.hostname.split('.')[0];
-            connectedServer.textContent = serverName === 'localhost' ? 'облачному серверу' : serverName;
-            
-            // Обработчики событий Socket.io
-            setupSocketListeners();
-            
-            // Отладочные сообщения
-            socket.on('connect_error', (err) => {
-                console.error('Ошибка подключения Socket.IO:', err.message);
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Ошибка подключения: ${err.message}</span>`;
-            });
-            
-            socket.on('reconnect_attempt', (attemptNumber) => {
-                connectionStatus.innerHTML = 
-                    `<span style="color:orange">Повторное подключение (${attemptNumber})...</span>`;
-            });
-            
-            socket.on('reconnect_failed', () => {
-                connectionStatus.innerHTML = 
-                    `<span style="color:red">Не удалось восстановить подключение</span>`;
-            });
-            
-            return true;
-        } catch (error) {
-            console.error('Ошибка при создании Socket.IO клиента:', error);
-            connectionStatus.innerHTML = 
-                `<span style="color:red">Ошибка: ${error.message}</span>`;
-            return false;
-        }
-    }
-
-    // Обработчики событий для настроек
-    autoDeleteToggle.addEventListener('change', () => {
-        autoDeleteEnabled = autoDeleteToggle.checked;
-        saveSettings();
-        
-        // Обновляем состояние существующих сообщений
-        updateMessageDeletionState();
-    });
+    // Инициализация интерфейса
+    initAuthTabs();
+    checkSavedCredentials();
     
-    deleteTimeSelect.addEventListener('change', () => {
-        messageLifetime = parseInt(deleteTimeSelect.value);
-        saveSettings();
-        
-        // Обновляем таймеры существующих сообщений
-        updateMessageDeletionTimers();
-    });
-    
-    // Обновление состояния автоудаления всех сообщений
-    function updateMessageDeletionState() {
-        const messages = document.querySelectorAll('.message');
-        
-        messages.forEach(message => {
-            const messageId = message.id;
-            const countdownElement = document.getElementById(`countdown-${messageId}`);
-            
-            if (countdownElement) {
-                if (autoDeleteEnabled) {
-                    countdownElement.style.display = 'block';
-                    // Перезапускаем таймер, если он был отключен
-                    if (!messageTimers[messageId]) {
-                        setupMessageDeletion(messageId);
-                    }
-                } else {
-                    countdownElement.style.display = 'none';
-                    // Отменяем существующий таймер
-                    if (messageTimers[messageId]) {
-                        clearTimeout(messageTimers[messageId].deletionTimer);
-                        clearInterval(messageTimers[messageId].countdownInterval);
-                        delete messageTimers[messageId];
-                    }
-                }
-            }
-        });
-    }
-    
-    // Обновление таймеров автоудаления всех сообщений
-    function updateMessageDeletionTimers() {
-        Object.keys(messageTimers).forEach(messageId => {
-            // Отменяем существующий таймер
-            clearTimeout(messageTimers[messageId].deletionTimer);
-            clearInterval(messageTimers[messageId].countdownInterval);
-            
-            // Если автоудаление включено, создаем новый таймер
-            if (autoDeleteEnabled) {
-                setupMessageDeletion(messageId);
-            } else {
-                delete messageTimers[messageId];
-            }
-        });
-    }
-
-    // Обработка выбора изображения
-    imageUpload.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        // Проверка типа файла
-        if (!file.type.match('image.*')) {
-            alert('Пожалуйста, выберите изображение');
-            return;
-        }
-        
-        processImageFile(file);
-    });
-    
-    // Функция обработки файла изображения
-    function processImageFile(file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                // Оптимизируем изображение
-                currentImage = optimizeImage(img, file.type);
-                
-                // Показываем предпросмотр
-                imagePreview.src = currentImage;
-                imagePreviewContainer.style.display = 'block';
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
-    
-    // Добавляем поддержку drag-n-drop
-    const dropZone = messagesContainer.parentElement; // Используем чат-контейнер как зону для перетаскивания
-    const messageInputContainer = document.querySelector('.message-input-container');
-    
-    // Индикатор для отображения активной зоны перетаскивания
-    const dropIndicator = document.createElement('div');
-    dropIndicator.className = 'drop-indicator';
-    dropIndicator.innerHTML = `
-        <div class="drop-indicator-content">
-            <div class="drop-icon">📁</div>
-            <div class="drop-text">Перетащите изображение сюда</div>
-        </div>
-    `;
-    dropIndicator.style.display = 'none';
-    document.querySelector('.chat-main').appendChild(dropIndicator);
-    
-    // Счетчик для отслеживания входов/выходов при перетаскивании
-    let dragCounter = 0;
-    
-    // Показать индикатор перетаскивания
-    function showDropIndicator() {
-        dropIndicator.style.display = 'flex';
-    }
-    
-    // Скрыть индикатор перетаскивания
-    function hideDropIndicator() {
-        dropIndicator.style.display = 'none';
-    }
-    
-    // Функция для обработки события перетаскивания файла
-    function handleFileDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter = 0;
-        hideDropIndicator();
-        
-        const files = e.dataTransfer.files;
-        if (files.length) {
-            const file = files[0]; // Берем только первый файл
-            
-            // Проверка типа файла
-            if (!file.type.match('image.*')) {
-                alert('Пожалуйста, перетащите изображение');
-                return;
-            }
-            
-            processImageFile(file);
-        }
-    }
-    
-    // Обработчики событий drag-n-drop для области сообщений
-    dropZone.addEventListener('dragenter', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter++;
-        showDropIndicator();
-    });
-    
-    dropZone.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter--;
-        if (dragCounter === 0) {
-            hideDropIndicator();
-        }
-    });
-    
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    });
-    
-    dropZone.addEventListener('drop', handleFileDrop);
-    
-    // Дополнительно добавляем поддержку перетаскивания в область ввода сообщений
-    messageInputContainer.addEventListener('dragenter', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter++;
-        showDropIndicator();
-    });
-    
-    messageInputContainer.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter--;
-        if (dragCounter === 0) {
-            hideDropIndicator();
-        }
-    });
-    
-    messageInputContainer.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    });
-    
-    messageInputContainer.addEventListener('drop', handleFileDrop);
-    
-    // Также поддерживаем вставку изображений из буфера обмена
-    messageInput.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        
-        for (const item of items) {
-            if (item.type.indexOf('image') === 0) {
-                e.preventDefault();
-                const file = item.getAsFile();
-                processImageFile(file);
-                break;
-            }
-        }
-    });
-    
-    // Кнопка удаления изображения
-    removeImageButton.addEventListener('click', () => {
-        currentImage = null;
-        imagePreview.src = '';
-        imagePreviewContainer.style.display = 'none';
-        imageUpload.value = '';
-    });
-
-    // Оптимизация изображения
-    function optimizeImage(img, fileType) {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        // Уменьшаем размер, если изображение слишком большое
-        if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
-            const ratio = Math.min(MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height);
-            width *= ratio;
-            height *= ratio;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Определяем формат вывода
-        const outputFormat = fileType === 'image/png' ? 'image/png' : 'image/jpeg';
-        
-        // Получаем base64 с заданным качеством
-        let dataUrl = canvas.toDataURL(outputFormat, IMAGE_QUALITY);
-        
-        // Если размер все еще превышает ограничение, уменьшаем качество
-        // до тех пор, пока не достигнем нужного размера
-        let quality = IMAGE_QUALITY;
-        const BASE64_MARKER = ';base64,';
-        const base64Index = dataUrl.indexOf(BASE64_MARKER) + BASE64_MARKER.length;
-        const base64 = dataUrl.substring(base64Index);
-        
-        let byteSize = Math.ceil(base64.length * 0.75);
-        
-        while (byteSize > MAX_IMAGE_SIZE && quality > 0.1) {
-            quality -= 0.1;
-            dataUrl = canvas.toDataURL(outputFormat, quality);
-            const newBase64 = dataUrl.substring(dataUrl.indexOf(BASE64_MARKER) + BASE64_MARKER.length);
-            byteSize = Math.ceil(newBase64.length * 0.75);
-        }
-        
-        console.log(`Оптимизировано изображение: ${width}x${height}, ${Math.round(byteSize / 1024)}KB, качество: ${quality.toFixed(1)}`);
-        
-        return dataUrl;
-    }
-    
-    // Открытие изображения в модальном окне
-    messagesContainer.addEventListener('click', (e) => {
-        if (e.target.classList.contains('message-image')) {
-            modalImage.src = e.target.src;
-            imageModal.style.display = 'flex';
-        }
-    });
-    
-    // Закрытие модального окна
-    imageModal.addEventListener('click', () => {
-        imageModal.style.display = 'none';
-    });
-
-    // Загружаем настройки при загрузке страницы
+    // Остальные загрузки и инициализации
     loadSettings();
     loadSoundSettings();
+    initializeUI();
 }); 

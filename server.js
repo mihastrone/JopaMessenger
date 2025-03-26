@@ -15,10 +15,112 @@ const IMAGE_MAX_AGE = 1000 * 60 * 60 * 24; // Максимальный возр�
 // Директория для хранения изображений
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 
-// Создаем директорию, если она не существует
+// Директория для хранения пользовательских данных
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+
+// Создаем нужные директории, если они не существуют
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   console.log(`Создана директория для загрузок: ${UPLOADS_DIR}`);
+}
+
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  console.log(`Создана директория для данных: ${DATA_DIR}`);
+}
+
+// Инициализация хранилища пользователей
+let userDatabase = {};
+if (fs.existsSync(USERS_FILE)) {
+  try {
+    const userData = fs.readFileSync(USERS_FILE, 'utf8');
+    userDatabase = JSON.parse(userData);
+    console.log(`Загружено ${Object.keys(userDatabase).length} пользователей`);
+  } catch (error) {
+    console.error(`Ошибка при загрузке пользователей: ${error.message}`);
+    userDatabase = {};
+  }
+} else {
+  // Создаем пустой файл пользователей
+  fs.writeFileSync(USERS_FILE, JSON.stringify({}), 'utf8');
+  console.log('Создан новый файл пользователей');
+}
+
+// Функция сохранения пользователей в файл
+function saveUsers() {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(userDatabase), 'utf8');
+    console.log('Данные пользователей сохранены');
+  } catch (error) {
+    console.error(`Ошибка при сохранении пользователей: ${error.message}`);
+  }
+}
+
+// Функция для хеширования пароля с солью
+function hashPassword(password, salt = null) {
+  // Если соль не предоставлена, генерируем новую
+  if (!salt) {
+    salt = crypto.randomBytes(16).toString('hex');
+  }
+  
+  // Хешируем пароль с солью
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  
+  // Возвращаем соль и хеш для сохранения
+  return { salt, hash };
+}
+
+// Функция для проверки пароля
+function verifyPassword(password, salt, storedHash) {
+  const { hash } = hashPassword(password, salt);
+  return hash === storedHash;
+}
+
+// Функция для регистрации нового пользователя
+function registerUser(username, displayName, password) {
+  // Проверка, существует ли пользователь
+  if (userDatabase[username]) {
+    return { success: false, message: 'Пользователь с таким логином уже существует' };
+  }
+  
+  // Хешируем пароль
+  const { salt, hash } = hashPassword(password);
+  
+  // Создаем запись о пользователе
+  userDatabase[username] = {
+    displayName,
+    salt,
+    hash,
+    created: Date.now()
+  };
+  
+  // Сохраняем обновленный список пользователей
+  saveUsers();
+  
+  return { success: true, message: 'Регистрация успешна' };
+}
+
+// Функция для аутентификации пользователя
+function authenticateUser(username, password) {
+  // Проверка, существует ли пользователь
+  if (!userDatabase[username]) {
+    return { success: false, message: 'Пользователь не найден' };
+  }
+  
+  // Получаем данные пользователя
+  const user = userDatabase[username];
+  
+  // Проверяем пароль
+  if (!verifyPassword(password, user.salt, user.hash)) {
+    return { success: false, message: 'Неверный пароль' };
+  }
+  
+  return { 
+    success: true, 
+    message: 'Авторизация успешна',
+    displayName: user.displayName
+  };
 }
 
 const app = express();
@@ -70,13 +172,14 @@ const io = socketIo(server, {
 
 // Хранение данных
 const messages = [];
-const users = {};
+const users = {}; // Хранит socketId -> username
+const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
 const rooms = new Map(); // Хранение приватных комнат
 
 // Класс для сообщений с расширенными атрибутами
 class Message {
-  constructor(id, user, text, timestamp, roomId = null, autoDelete = false, lifetime = DEFAULT_MESSAGE_LIFETIME, image = null) {
+  constructor(id, user, text, timestamp, roomId = null, autoDelete = false, lifetime = DEFAULT_MESSAGE_LIFETIME, image = null, displayName = null) {
     this.id = id;
     this.user = user;
     this.text = text;
@@ -85,6 +188,7 @@ class Message {
     this.autoDelete = autoDelete;
     this.lifetime = lifetime;
     this.image = image; // Добавляем поле для хранения изображения
+    this.displayName = displayName; // Добавляем отображаемое имя
   }
 }
 
@@ -171,21 +275,105 @@ io.on('connection', (socket) => {
   // Отправляем тестовое сообщение при подключении
   socket.emit('connection-test', { status: 'connected', server_time: new Date().toISOString() });
 
-  // Регистрация пользователя
+  // Регистрация пользователя через старый метод (совместимость)
   socket.on('register', (username) => {
     users[socket.id] = username;
+    activeUsers[username] = { socketId: socket.id, displayName: username };
     
     // Отправляем актуальные сообщения
     socket.emit('message-history', messages);
     
-    io.emit('user-list', Object.values(users));
+    io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
     
     // Создаем системное сообщение о подключении
     const systemMessageId = Date.now();
     const systemMessage = `${username} подключился к чату`;
     io.emit('system-message', systemMessage);
     
-    console.log(`Пользователь ${username} зарегистрирован`);
+    console.log(`Пользователь ${username} зарегистрирован (упрощенный метод)`);
+  });
+  
+  // Регистрация нового пользователя через пароль
+  socket.on('register_user', (data) => {
+    const { username, displayName, password } = data;
+    
+    if (!username || !displayName || !password) {
+      socket.emit('registration_result', { 
+        success: false, 
+        message: 'Отсутствуют обязательные поля' 
+      });
+      return;
+    }
+    
+    // Регистрируем пользователя
+    const result = registerUser(username, displayName, password);
+    
+    if (result.success) {
+      // Авторизуем пользователя после успешной регистрации
+      users[socket.id] = username;
+      activeUsers[username] = { socketId: socket.id, displayName };
+      
+      // Отправляем актуальные сообщения
+      socket.emit('message-history', messages);
+      
+      // Обновляем список пользователей для всех
+      io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
+      
+      // Создаем системное сообщение о подключении
+      const systemMessage = `${displayName} подключился к чату`;
+      io.emit('system-message', systemMessage);
+      
+      console.log(`Пользователь ${username} (${displayName}) зарегистрирован`);
+    }
+    
+    // Отправляем результат регистрации
+    socket.emit('registration_result', result);
+  });
+  
+  // Аутентификация пользователя по паролю
+  socket.on('authenticate', (data) => {
+    const { username, password, displayName } = data;
+    
+    if (!username || !password) {
+      socket.emit('auth_result', { 
+        success: false, 
+        message: 'Отсутствуют обязательные поля' 
+      });
+      return;
+    }
+    
+    // Проверяем пользователя
+    const authResult = authenticateUser(username, password);
+    
+    if (authResult.success) {
+      // Авторизуем пользователя
+      users[socket.id] = username;
+      activeUsers[username] = { 
+        socketId: socket.id, 
+        displayName: authResult.displayName || displayName || username 
+      };
+      
+      // Добавляем сведения о пользователе в результат
+      authResult.username = username;
+      authResult.displayName = activeUsers[username].displayName;
+      
+      // Отправляем актуальные сообщения
+      socket.emit('message-history', messages);
+      
+      // Обновляем список пользователей для всех
+      io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
+      
+      // Создаем системное сообщение о подключении
+      const systemMessage = `${activeUsers[username].displayName} подключился к чату`;
+      io.emit('system-message', systemMessage);
+      
+      console.log(`Пользователь ${username} (${activeUsers[username].displayName}) успешно авторизован`);
+    } else {
+      console.log(`Неудачная попытка авторизации для ${username}: ${authResult.message}`);
+    }
+    
+    // Отправляем результат авторизации
+    socket.emit('auth_result', authResult);
   });
 
   // Создание приватной комнаты
@@ -222,8 +410,16 @@ io.on('connection', (socket) => {
     // Отправляем историю сообщений комнаты
     socket.emit('room_messages', room.messages);
     
-    // Оповещаем всех участников комнаты
-    io.to(roomId).emit('room_joined', { roomId, roomName: room.name });
+    // Оповещаем всех участников комнаты о новом пользователе
+    const username = users[socket.id];
+    io.to(roomId).emit('user_joined_room', { 
+      username, 
+      roomId, 
+      roomName: room.name 
+    });
+    
+    // Оповещаем присоединившегося пользователя
+    socket.emit('room_joined', { roomId, roomName: room.name });
     
     console.log(`Пользователь ${users[socket.id]} присоединился к комнате ${room.name}`);
   });
@@ -237,11 +433,19 @@ io.on('connection', (socket) => {
     }
 
     // Удаляем пользователя из комнаты
-    room.members.delete(users[socket.id]);
+    const username = users[socket.id];
+    room.members.delete(username);
     socket.leave(roomId);
     
-    // Оповещаем всех участников комнаты
-    io.to(roomId).emit('room_left', { roomId, roomName: room.name });
+    // Оповещаем всех участников комнаты о выходе пользователя
+    io.to(roomId).emit('user_left_room', { 
+      username, 
+      roomId, 
+      roomName: room.name 
+    });
+    
+    // Оповещаем пользователя о выходе из комнаты
+    socket.emit('room_left', { roomId, roomName: room.name });
     
     console.log(`Пользователь ${users[socket.id]} покинул комнату ${room.name}`);
   });
@@ -269,7 +473,12 @@ io.on('connection', (socket) => {
     console.log(`Комната ${room.name} удалена пользователем ${users[socket.id]}`);
   });
 
-  // Получение сообщения
+  // Запрос сообщений общего чата
+  socket.on('get_messages', () => {
+    socket.emit('message-history', messages);
+  });
+
+  // Модифицированное получение сообщения
   socket.on('message', (messageData) => {
     const messageId = Date.now();
     const username = users[socket.id];
@@ -279,6 +488,9 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Получаем отображаемое имя пользователя
+    const displayName = activeUsers[username]?.displayName || username;
+    
     let imagePath = null;
 
     // Проверяем размер сообщения с изображением
@@ -311,7 +523,8 @@ io.on('connection', (socket) => {
       messageData.roomId,
       false,
       DEFAULT_MESSAGE_LIFETIME,
-      imagePath // Сохраняем путь к изображению вместо base64
+      imagePath,
+      displayName // Добавляем отображаемое имя
     );
 
     if (messageData.roomId) {
@@ -348,23 +561,50 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     if (users[socket.id]) {
       const username = users[socket.id];
+      const displayName = activeUsers[username]?.displayName || username;
       
       // Удаляем пользователя из всех комнат
       rooms.forEach((room, roomId) => {
         if (room.members.has(username)) {
           room.members.delete(username);
-          io.to(roomId).emit('room_left', { roomId, roomName: room.name });
+          io.to(roomId).emit('user_left_room', { 
+            username, 
+            displayName,
+            roomId, 
+            roomName: room.name 
+          });
         }
       });
       
       // Создаем системное сообщение об отключении
-      const systemMessageId = Date.now();
-      const systemMessage = `${username} покинул чат`;
+      const systemMessage = `${displayName} покинул чат`;
       io.emit('system-message', systemMessage);
       
+      // Удаляем пользователя из списков
+      delete activeUsers[username];
       delete users[socket.id];
-      io.emit('user-list', Object.values(users));
+      
+      // Обновляем список активных пользователей
+      io.emit('user-list', Object.values(activeUsers).map(u => u.displayName || u.username));
     }
+  });
+
+  socket.on('user_left_room', ({ username, roomId, roomName }) => {
+    // Оповещаем всех участников комнаты о выходе пользователя
+    const room = rooms.get(roomId);
+    const displayName = activeUsers[username]?.displayName || username;
+    
+    io.to(roomId).emit('user_left_room', { 
+      username, 
+      displayName,
+      roomId, 
+      roomName: room.name 
+    });
+    
+    // Оповещаем пользователя о выходе из комнаты
+    socket.emit('room_left', { roomId, roomName: room.name });
+    
+    console.log(`Пользователь ${username} (${displayName}) покинул комнату ${room.name}`);
   });
 });
 

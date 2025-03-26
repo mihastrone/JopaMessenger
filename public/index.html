@@ -27,10 +27,34 @@
         <div class="login-screen" id="login-screen">
             <h1>Jopa Messenger</h1>
             <p class="subtitle">Лёгкий онлайн-чат</p>
-            <div class="login-form">
-                <input type="text" id="username-input" placeholder="Ваше имя" maxlength="20">
+            
+            <div class="auth-tabs">
+                <button class="auth-tab-btn active" data-tab="login">Вход</button>
+                <button class="auth-tab-btn" data-tab="register">Регистрация</button>
+            </div>
+            
+            <div class="login-form" id="login-form">
+                <div class="auth-form" id="login-tab">
+                    <input type="text" id="login-username" placeholder="Логин" maxlength="20">
+                    <input type="password" id="login-password" placeholder="Пароль">
+                    <div class="remember-me">
+                        <label>
+                            <input type="checkbox" id="remember-me">
+                            <span>Запомнить меня</span>
+                        </label>
+                    </div>
+                    <button id="login-button">Войти в чат</button>
+                </div>
+                
+                <div class="auth-form" id="register-tab" style="display: none;">
+                    <input type="text" id="register-username" placeholder="Логин" maxlength="20">
+                    <input type="text" id="register-display-name" placeholder="Отображаемое имя" maxlength="20">
+                    <input type="password" id="register-password" placeholder="Пароль">
+                    <input type="password" id="register-password-confirm" placeholder="Подтвердите пароль">
+                    <button id="register-button">Зарегистрироваться</button>
+                </div>
+                
                 <div class="connection-status" id="connection-status"></div>
-                <button id="login-button">Войти в чат</button>
             </div>
         </div>
         
