@@ -666,6 +666,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', 'system-message');
         messageDiv.textContent = message.text;
+        
+        // Устанавливаем флаг для распознавания системных сообщений
+        messageDiv.dataset.system = 'true';
+        
+        // Проверяем, содержит ли сообщение упоминание администратора
+        if (message.text && (
+            message.text.includes('администратор') || 
+            message.text.includes('Админ') || 
+            message.text.includes('удалено администратор')
+          )) {
+          console.log('Обнаружено системное сообщение, связанное с администратором');
+          messageDiv.dataset.adminSystem = 'true';
+        }
+        
         return messageDiv;
       }
       
@@ -866,6 +880,9 @@ document.addEventListener('DOMContentLoaded', () => {
         systemMessage.className = 'system-message deletion-message';
         systemMessage.textContent = `Сообщение было удалено ${deletedByText}`;
         
+        // Добавляем атрибут system чтобы сообщение автоматически удалилось через displayMessage
+        systemMessage.isSystem = true;
+        
         // Заменяем удаленное сообщение системным уведомлением
         messageElement.parentNode.replaceChild(systemMessage, messageElement);
         
@@ -917,7 +934,12 @@ document.addEventListener('DOMContentLoaded', () => {
     scrollToBottom();
     
     // Автоматическое скрытие системных сообщений через 10 секунд
-    if (message.system || message.isSystem) {
+    if (message.system || message.isSystem || 
+        (messageElement.dataset && (messageElement.dataset.system === 'true' || messageElement.dataset.adminSystem === 'true')) ||
+        (messageElement.className && messageElement.className.includes('system-message'))) {
+      
+      console.log('Настраиваем автоматическое скрытие системного сообщения');
+      
       setTimeout(() => {
         if (messageElement.parentNode) {
           // Добавляем класс анимации удаления
