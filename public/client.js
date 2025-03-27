@@ -297,8 +297,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentRoom !== roomId) {
       currentRoom = roomId;
       
-      // Обновляем название комнаты
-      currentRoomName.textContent = roomName;
+      // Обновляем название комнаты в заголовке
+      const roomNameEl = document.getElementById('current-room-name');
+      if (roomNameEl) {
+        roomNameEl.textContent = roomName;
+      }
       
       // Очищаем контейнер сообщений
       messagesContainer.innerHTML = '';
@@ -346,93 +349,27 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Отображение сообщения в чате
   function displayMessage(message) {
-    // Если сообщение не для текущей комнаты, игнорируем
+    // Проверяем принадлежность сообщения текущей комнате
     if (message.roomId && message.roomId !== currentRoom) {
       return;
     }
     
-    // Если это сообщение из другой комнаты и не от нас, проигрываем уведомление
-    if (message.roomId !== currentRoom && (!currentUser || message.username !== currentUser.username)) {
+    // Если это сообщение из другой комнаты, проигрываем уведомление
+    if (!isWindowActive) {
       playNotificationSound();
     }
     
-    // Создаем элемент сообщения
-    const messageElement = document.createElement('div');
+    // Создаем элемент сообщения через функцию createMessageElement или используем существующий код
+    const messageElement = createMessageElement({
+      sender: message.username,
+      displayName: message.displayName || message.username,
+      text: message.text,
+      image: message.image,
+      timestamp: message.timestamp,
+      isSystem: message.system
+    });
     
-    // Если это системное сообщение
-    if (message.system) {
-      messageElement.className = 'system-message';
-      messageElement.textContent = message.text;
-      messagesContainer.appendChild(messageElement);
-      scrollToBottom();
-      return;
-    }
-    
-    // Если это обычное сообщение
-    messageElement.className = 'message';
-    
-    // Проверяем, является ли сообщение собственным
-    if (currentUser && message.username === currentUser.username) {
-      messageElement.classList.add('own');
-    } else if (!isWindowActive) {
-      // Проигрываем звук уведомления для чужих сообщений при неактивном окне
-      playNotificationSound();
-    }
-    
-    // Создаем пузырь сообщения
-    const messageBubble = document.createElement('div');
-    messageBubble.className = 'message-bubble';
-    
-    // Метаданные (имя пользователя и время)
-    const metaElement = document.createElement('div');
-    metaElement.className = 'message-meta';
-    
-    const usernameElement = document.createElement('span');
-    usernameElement.className = 'username';
-    usernameElement.textContent = message.displayName || message.username;
-    
-    const timestampElement = document.createElement('span');
-    timestampElement.className = 'timestamp';
-    timestampElement.textContent = new Date(message.timestamp).toLocaleTimeString();
-    
-    metaElement.appendChild(usernameElement);
-    metaElement.appendChild(timestampElement);
-    
-    // Текст сообщения
-    if (message.text) {
-      const textElement = document.createElement('div');
-      textElement.className = 'message-text';
-      textElement.textContent = message.text;
-      messageBubble.appendChild(metaElement);
-      messageBubble.appendChild(textElement);
-    }
-    
-    // Если есть изображение
-    if (message.image) {
-      const imageElement = document.createElement('div');
-      imageElement.className = 'message-image';
-      
-      const img = document.createElement('img');
-      img.src = message.image;
-      img.alt = 'Изображение';
-      img.addEventListener('click', () => {
-        window.open(message.image, '_blank');
-      });
-      
-      imageElement.appendChild(img);
-      
-      if (!message.text) {
-        messageBubble.appendChild(metaElement);
-      }
-      
-      messageBubble.appendChild(imageElement);
-    }
-    
-    // Добавляем сообщение в DOM
-    messageElement.appendChild(messageBubble);
     messagesContainer.appendChild(messageElement);
-    
-    // Прокручиваем вниз
     scrollToBottom();
   }
   
@@ -475,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentUser = response.user;
       
       // Обновляем интерфейс
-      userDisplayName.textContent = currentUser.displayName;
+      userDisplayName.textContent = currentUser.displayName || currentUser.username;
       
       // Скрываем форму авторизации и показываем чат
       authContainer.style.display = 'none';
@@ -483,6 +420,9 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Присоединяемся к общей комнате
       socket.emit('join_room', 'general');
+      
+      // Применяем тему
+      applyTheme();
       
       // Фокусируемся на поле ввода сообщения
       messageInput.focus();
@@ -503,7 +443,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (response.success) {
       // Обновляем текущую комнату
       currentRoom = response.room.id;
-      currentRoomName.textContent = response.room.name;
+      
+      // Обновляем название комнаты
+      const roomNameEl = document.getElementById('current-room-name');
+      if (roomNameEl) {
+        roomNameEl.textContent = response.room.name;
+      }
       
       // Обновляем список комнат (он придет от сервера)
     }
@@ -672,4 +617,9 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.connect();
     }, 500);
   }
+
+  // Настройки пользователя
+  settingsButton.addEventListener('click', () => {
+    alert('Настройки пользователя будут доступны в следующей версии');
+  });
 }); 
