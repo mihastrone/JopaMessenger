@@ -126,6 +126,9 @@ let userAvatars = {};
 // Инициализация карты комнат
 let rooms = new Map();
 
+// Массив для хранения сообщений
+let messages = [];
+
 // Класс для приватных комнат
 class Room {
   constructor(id, name, creator) {
@@ -401,7 +404,6 @@ const io = socketIo(server, {
 });
 
 // Хранение данных
-const messages = [];
 const users = {}; // Хранит socketId -> username
 const activeUsers = {}; // Хранит username -> { socketId, displayName }
 const messageTimers = {}; // Для хранения таймеров удаления сообщений
@@ -1159,8 +1161,21 @@ io.on('connection', (socket) => {
     console.log(`Комната ${room.name} удалена пользователем ${users[socket.id]}`);
   });
 
-  // Запрос сообщений общего чата
-  socket.on('get_messages', () => {
+  // Обработчик получения истории сообщений
+  socket.on('get_messages', (data) => {
+    console.log('Запрос истории сообщений:', data);
+    
+    // Если пользователь не авторизован, отправляем ошибку
+    if (!socket.user) {
+      console.log('Неавторизованный запрос истории сообщений');
+      socket.emit('system-message', { 
+        system: true, 
+        text: 'Вы не авторизованы для получения истории сообщений' 
+      });
+      return;
+    }
+    
+    // Отправляем историю сообщений
     socket.emit('message-history', messages);
   });
 
@@ -1551,28 +1566,35 @@ io.on('connection', (socket) => {
 
   // Обработчик сообщений чата
   socket.on('chat_message', (message) => {
-    console.log('Получено сообщение:', message);
+    console.log('Получено сообщение для чата:', message);
     
     // Проверяем, авторизован ли пользователь
     if (!socket.user) {
-        console.log('Попытка отправить сообщение неавторизованным пользователем');
-        return;
+      console.log('Попытка отправить сообщение неавторизованным пользователем');
+      socket.emit('system-message', { 
+        system: true, 
+        text: 'Вы не авторизованы для отправки сообщений' 
+      });
+      return;
     }
     
-    // Добавляем информацию о пользователе
-    message.username = socket.user.username;
-    message.displayName = socket.user.displayName;
-    message.timestamp = Date.now();
+    // Дополняем сообщение информацией о пользователе для безопасности
+    message.username = socket.user.username; // Используем username из сессии
+    message.displayName = socket.user.displayName || socket.user.username;
     
-    // Отправляем сообщение всем подключенным клиентам
+    // Отправляем сообщение всем пользователям
     io.emit('chat_message', message);
     
-    // Сохраняем сообщение в истории
-    messages.push(message);
-    
-    // Ограничиваем историю последними 100 сообщениями
-    if (messages.length > 100) {
+    // Сохраняем сообщение в истории (если массив существует)
+    if (Array.isArray(messages)) {
+      messages.push(message);
+      
+      // Ограничиваем историю последними 100 сообщениями
+      if (messages.length > 100) {
         messages.shift();
+      }
+    } else {
+      console.error('Массив сообщений не инициализирован');
     }
   });
 });

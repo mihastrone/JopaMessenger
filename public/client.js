@@ -1188,6 +1188,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Загрузка настроек темы
+    function loadThemeSettings() {
+        console.log('Загрузка настроек темы');
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        applyTheme(savedTheme);
+        
+        // Если есть select для темы, устанавливаем значение
+        const themeSelect = document.getElementById('theme-select');
+        if (themeSelect) {
+            themeSelect.value = savedTheme;
+        }
+    }
+    
     // Применение темы
     function applyTheme(theme) {
         if (theme === 'dark') {
@@ -1715,21 +1728,30 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayMessage(message) {
         console.log('Отображение сообщения:', message);
         
+        // Проверяем существование контейнера сообщений
+        const messagesContainer = document.getElementById('messages-container');
+        if (!messagesContainer) {
+            console.error('Контейнер сообщений не найден');
+            return;
+        }
+        
         // Проверяем, системное ли это сообщение
         if (message.system) {
             const systemMsg = document.createElement('div');
             systemMsg.className = 'system-message';
             systemMsg.textContent = message.text;
             messagesContainer.appendChild(systemMsg);
+            scrollToBottom();
             return;
         }
         
         // Создаем элемент сообщения
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
+        messageElement.id = `message-${message.timestamp}`;
         
         // Добавляем класс для собственных сообщений
-        if (message.username === currentUsername) {
+        if (message.username === username) {
             messageElement.classList.add('own');
         }
         
@@ -1787,11 +1809,13 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesContainer.appendChild(messageElement);
         
         // Прокручиваем к последнему сообщению
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        scrollToBottom();
+        
+        return messageElement;
     }
 
     // Обработчик отправки сообщения
-    document.getElementById('send-message').addEventListener('click', () => {
+    document.getElementById('send-button').addEventListener('click', () => {
         const messageInput = document.getElementById('message-input');
         const message = messageInput.value.trim();
         
@@ -1799,8 +1823,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Отправляем сообщение на сервер
             socket.emit('chat_message', {
                 text: message,
-                username: currentUsername,
-                displayName: currentDisplayName,
+                username: username,
+                displayName: displayName,
                 timestamp: Date.now()
             });
             
@@ -1812,12 +1836,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Обработчик нажатия Enter в поле ввода
     document.getElementById('message-input').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
-            document.getElementById('send-message').click();
+            document.getElementById('send-button').click();
         }
     });
     
     // Обработчик получения сообщения от сервера
     socket.on('chat_message', (message) => {
+        console.log('Получено сообщение для чата:', message);
         displayMessage(message);
     });
 }); 
