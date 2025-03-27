@@ -6,15 +6,15 @@
 }
 
 :root {
-  --primary-color: #ff8042; /* Оранжевый */
-  --secondary-color: #86b8ce; /* Голубоватый */
-  --background-color: #f7f2ed; /* Кремовый */
-  --dark-background: #494949; /* Темно-серый */
-  --text-color: #333;
+  --primary-color: #e86a30; /* Более темный оранжевый */
+  --secondary-color: #6a9cb2; /* Более темный голубой */
+  --background-color: #e5dcd3; /* Более темный кремовый */
+  --dark-background: #353535; /* Темно-серый */
+  --text-color: #2a2a2a;
   --light-text: #fff;
-  --message-own: #ffdbc9; /* Светло-оранжевый */
-  --message-other: #efefef; /* Светло-серый */
-  --header-gradient: linear-gradient(135deg, #ff8042 0%, #ff6e42 100%);
+  --message-own: #ffc6a8; /* Светло-оранжевый */
+  --message-other: #e7e7e7; /* Светло-серый */
+  --header-gradient: linear-gradient(135deg, #e86a30 0%, #d94f24 100%);
 }
 
 body {
@@ -63,7 +63,7 @@ button:hover {
   align-items: center;
   min-height: 100vh;
   padding: 1rem;
-  background: var(--header-gradient);
+  background: linear-gradient(135deg, #c0572b 0%, #e86a30 50%, #a94b25 100%);
   position: relative;
 }
 
@@ -74,7 +74,7 @@ button:hover {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 128, 66, 0.7);
+  background: rgba(167, 81, 40, 0.5);
   z-index: 1;
 }
 
@@ -205,10 +205,10 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(135deg, var(--primary-color) 0%, #ff6a3a 50%, #ff8446 100%);
+  background: linear-gradient(135deg, #d05527 0%, #c24a1f 50%, #b54320 100%);
   color: white;
   padding: 1rem;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .user-info {
@@ -302,6 +302,8 @@ button:hover {
   cursor: pointer;
   transition: all 0.2s;
   border-left: 3px solid transparent;
+  position: relative;
+  padding-right: 40px; /* Пространство для кнопки удаления */
 }
 
 .room-item:hover {
@@ -314,6 +316,30 @@ button:hover {
   color: var(--text-color);
   font-weight: bold;
   border-left: 3px solid var(--primary-color);
+}
+
+.room-item .delete-room {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: transparent;
+  color: #dc3545;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  opacity: 0.6;
+  transition: all 0.2s;
+}
+
+.room-item .delete-room:hover {
+  opacity: 1;
+  background-color: rgba(220, 53, 69, 0.1);
 }
 
 /* Панель пользователей */
@@ -349,7 +375,7 @@ button:hover {
   flex: 1;
   padding: 1rem;
   overflow-y: auto;
-  background: linear-gradient(to bottom, var(--background-color) 0%, rgba(255, 232, 217, 0.7) 100%);
+  background: linear-gradient(to bottom, var(--background-color) 0%, rgba(230, 192, 170, 0.8) 100%);
 }
 
 .message-input-container {
@@ -545,7 +571,7 @@ button:hover {
   align-items: center;
   padding: 1rem;
   border-bottom: 1px solid #eee;
-  background: var(--header-gradient);
+  background: linear-gradient(135deg, #d05527 0%, #c24a1f 100%);
   color: white;
   border-radius: 12px 12px 0 0;
 }
@@ -608,4 +634,33 @@ button:hover {
   .message-bubble {
     max-width: 85%;
   }
+}
+
+.danger-btn {
+  background-color: #dc3545;
+  color: white;
+}
+
+.danger-btn:hover {
+  background-color: #c82333;
+}
+
+/* Стили для предупреждающего текста */
+.modal-body p {
+  margin-bottom: 1rem;
+}
+
+.modal-body p:last-child {
+  margin-bottom: 0;
+  font-style: italic;
+  color: #6c757d;
+}
+
+/* Специальные стили для подтверждения удаления */
+#delete-room-modal .modal-header {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+#delete-room-name {
+  font-weight: bold;
 } 

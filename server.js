@@ -486,6 +486,57 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Обработка удаления комнаты
+  socket.on('delete_room', (data) => {
+    const roomId = data.roomId;
+    
+    // Проверяем существование комнаты
+    if (!rooms[roomId]) {
+      socket.emit('room_deleted', { 
+        success: false,
+        message: 'Комната не найдена',
+        roomId
+      });
+      return;
+    }
+    
+    // Проверяем, что это не основная комната
+    if (roomId === 'general') {
+      socket.emit('room_deleted', { 
+        success: false,
+        message: 'Нельзя удалить основную комнату',
+        roomId
+      });
+      return;
+    }
+    
+    // Удаляем комнату
+    const roomName = rooms[roomId].name;
+    delete rooms[roomId];
+    
+    // Уведомляем всех пользователей об удалении комнаты
+    io.emit('room_list', Object.values(rooms));
+    
+    // Отправляем системное сообщение
+    const systemMessage = {
+      system: true,
+      text: `Комната "${roomName}" была удалена`,
+      timestamp: Date.now()
+    };
+    
+    io.emit('chat_message', systemMessage);
+    
+    // Отправляем подтверждение удаления комнаты
+    socket.emit('room_deleted', { 
+      success: true,
+      message: 'Комната удалена',
+      roomId
+    });
+    
+    // Сохраняем обновленный список комнат
+    saveRooms();
+  });
+
   // Отключение пользователя
   socket.on('disconnect', () => {
     if (socket.user) {

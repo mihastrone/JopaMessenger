@@ -54,8 +54,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalImage = document.getElementById('modal-image');
   const modalCloseBtn = document.querySelector('#image-modal .close-btn');
   
-  // Звуковое уведомление
+  // Аудио элементы
   const notificationSound = document.getElementById('notification-sound');
+  const messageSendSound = document.getElementById('message-send-sound');
+  
+  // Модальное окно удаления комнаты
+  const deleteRoomModal = document.getElementById('delete-room-modal');
+  const deleteRoomName = document.getElementById('delete-room-name');
+  const deleteRoomConfirmBtn = document.getElementById('delete-room-confirm-btn');
+  let roomToDelete = null;
   
   // Данные пользователя и чата
   let currentUser = null;
@@ -188,11 +195,31 @@ document.addEventListener('DOMContentLoaded', () => {
     registerMessage.style.display = 'none';
   }
   
-  // Воспроизведение звукового уведомления
+  // Обновленная функция для воспроизведения звукового уведомления
   function playNotificationSound() {
-    if (notificationsToggle.checked && !isWindowActive) {
+    if (!isWindowActive) {
+      notificationSound.volume = 0.5;
       notificationSound.currentTime = 0;
-      notificationSound.play().catch(err => console.log('Ошибка воспроизведения:', err));
+      const playPromise = notificationSound.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.log('Ошибка воспроизведения уведомления:', err);
+        });
+      }
+    }
+  }
+  
+  // Функция для воспроизведения звука отправки сообщения
+  function playMessageSendSound() {
+    messageSendSound.volume = 0.3;
+    messageSendSound.currentTime = 0;
+    const playPromise = messageSendSound.play();
+    
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
+        console.log('Ошибка воспроизведения звука отправки:', err);
+      });
     }
   }
   
@@ -287,6 +314,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Отправляем сообщение на сервер
     socket.emit('chat_message', message);
     
+    // Воспроизводим звук отправки
+    playMessageSendSound();
+    
     // Очищаем поле ввода
     messageInput.value = '';
     clearImageSelection();
@@ -334,6 +364,22 @@ document.addEventListener('DOMContentLoaded', () => {
       roomItem.className = 'room-item';
       roomItem.dataset.roomId = room.id;
       roomItem.textContent = room.name;
+      
+      // Добавляем кнопку удаления комнаты (кроме основной)
+      if (room.id !== 'general') {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-room';
+        deleteBtn.innerHTML = '<i class="fa fa-times"></i>';
+        deleteBtn.title = 'Удалить комнату';
+        
+        // Обработчик удаления комнаты
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation(); // Предотвращаем всплытие события
+          showDeleteRoomModal(room);
+        });
+        
+        roomItem.appendChild(deleteBtn);
+      }
       
       if (room.id === currentRoom) {
         roomItem.classList.add('active');
@@ -621,5 +667,41 @@ document.addEventListener('DOMContentLoaded', () => {
   // Настройки пользователя
   settingsButton.addEventListener('click', () => {
     alert('Настройки пользователя будут доступны в следующей версии');
+  });
+
+  // Обработчик удаления комнаты
+  socket.on('room_deleted', (response) => {
+    if (response.success) {
+      // Если удалена текущая комната, переходим в общую
+      if (response.roomId === currentRoom) {
+        handleRoomClick('general', 'Общий чат');
+      }
+    } else {
+      alert('Ошибка при удалении комнаты: ' + response.message);
+    }
+  });
+
+  // Функция для показа модального окна удаления комнаты
+  function showDeleteRoomModal(room) {
+    roomToDelete = room;
+    deleteRoomName.textContent = room.name;
+    deleteRoomModal.classList.add('active');
+  }
+  
+  // Обработчик подтверждения удаления
+  deleteRoomConfirmBtn.addEventListener('click', () => {
+    if (roomToDelete) {
+      socket.emit('delete_room', { roomId: roomToDelete.id });
+      deleteRoomModal.classList.remove('active');
+      roomToDelete = null;
+    }
+  });
+  
+  // Закрытие модального окна удаления
+  document.querySelectorAll('#delete-room-modal .close-btn, #delete-room-modal .cancel-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      deleteRoomModal.classList.remove('active');
+      roomToDelete = null;
+    });
   });
 }); 
