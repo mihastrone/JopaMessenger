@@ -1453,6 +1453,33 @@ document.addEventListener('DOMContentLoaded', () => {
         shouldScrollToBottom = isAtBottom;
     });
 
+    // Функция для отображения общего чата
+    function showGeneralChat() {
+        console.log('Отображение общего чата');
+        currentRoom = 'general';
+        
+        // Очищаем контейнер сообщений
+        messagesContainer.innerHTML = '';
+        
+        // Добавляем системное сообщение
+        const systemMsg = document.createElement('div');
+        systemMsg.className = 'system-message';
+        systemMsg.textContent = 'Вы вошли в общий чат';
+        messagesContainer.appendChild(systemMsg);
+        
+        // Загружаем историю сообщений
+        socket.emit('get_messages', { roomId: 'general' });
+        
+        // Обновляем заголовок чата
+        const roomTitle = document.querySelector('.chat-header h2');
+        if (roomTitle) {
+            roomTitle.textContent = 'Общий чат';
+        }
+        
+        // Прокручиваем чат вниз
+        scrollToBottom();
+    }
+
     // Функция инициализации интерфейса
     function initializeUI() {
         console.log('Инициализация пользовательского интерфейса');
