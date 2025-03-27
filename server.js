@@ -372,14 +372,11 @@ io.on('connection', (socket) => {
     }
 
     try {
-      // Хешируем пароль
-      const hashedPassword = hashPassword(password);
-
-      // Создаем пользователя
+      // Создаем пользователя с обычным паролем (без хеширования)
       users[username] = {
         username,
         displayName: displayName || username,
-        password: hashedPassword,
+        password: password, // Сохраняем пароль без хеширования
         createdAt: new Date().toISOString()
       };
 
@@ -389,6 +386,8 @@ io.on('connection', (socket) => {
         success: true,
         message: 'Регистрация успешна'
       });
+      
+      console.log(`Новый пользователь зарегистрирован: ${username}`);
     } catch (error) {
       console.error('Ошибка при регистрации:', error);
       socket.emit('register_response', {
