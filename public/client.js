@@ -30,8 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const messagesContainer = document.getElementById('messages-container');
   const messageInput = document.getElementById('message-input');
   const sendButton = document.getElementById('send-button');
-  const logoutBtn = document.getElementById('logout-btn');
-  const currentRoomName = document.getElementById('current-room-name');
+  const logoutButton = document.getElementById('logout-button');
+  const settingsButton = document.getElementById('settings-button');
   const roomsList = document.getElementById('rooms-list');
   const createRoomBtn = document.getElementById('create-room-btn');
   const notificationsToggle = document.getElementById('notifications-toggle');
@@ -43,11 +43,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeModalBtns = document.querySelectorAll('.close-btn, .cancel-btn');
   
   // Загрузка изображений
-  const uploadImageBtn = document.getElementById('upload-image-btn');
-  const imageInput = document.getElementById('image-input');
+  const attachButton = document.getElementById('attach-button');
+  const imageUpload = document.getElementById('image-upload');
   const imagePreviewContainer = document.getElementById('image-preview-container');
   const imagePreview = document.getElementById('image-preview');
   const cancelImageBtn = document.getElementById('cancel-image-btn');
+  
+  // Модальное окно просмотра изображений
+  const imageModal = document.getElementById('image-modal');
+  const modalImage = document.getElementById('modal-image');
+  const modalCloseBtn = document.querySelector('#image-modal .close-btn');
   
   // Звуковое уведомление
   const notificationSound = document.getElementById('notification-sound');
@@ -119,13 +124,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Загрузка изображения
-  uploadImageBtn.addEventListener('click', () => {
-    imageInput.click();
+  attachButton.addEventListener('click', () => {
+    imageUpload.click();
   });
   
   // Обработка выбора изображения
-  imageInput.addEventListener('change', () => {
-    const file = imageInput.files[0];
+  imageUpload.addEventListener('change', () => {
+    const file = imageUpload.files[0];
     if (file) {
       // Проверка типа файла
       if (!file.type.startsWith('image/')) {
@@ -157,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Очистка выбранного изображения
   function clearImageSelection() {
-    imageInput.value = '';
+    imageUpload.value = '';
     imagePreviewContainer.style.display = 'none';
     currentImageData = null;
   }
@@ -248,29 +253,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Выход
-  logoutBtn.addEventListener('click', () => {
-    // Сбрасываем данные пользователя
+  logoutButton.addEventListener('click', () => {
+    localStorage.removeItem('username');
+    localStorage.removeItem('token');
     currentUser = null;
-    
-    // Скрываем чат и показываем форму авторизации
-    chatContainer.style.display = 'none';
-    authContainer.style.display = 'flex';
-    
-    // Очищаем поля ввода
-    loginUsername.value = '';
-    loginPassword.value = '';
-    messageInput.value = '';
-    
-    // Очищаем список сообщений
-    messagesContainer.innerHTML = '';
-    
-    // Отключаем сокет
-    socket.disconnect();
-    
-    // Переподключаемся для следующего входа
-    setTimeout(() => {
-      socket.connect();
-    }, 500);
+    showAuthScreen();
   });
   
   // ======== Обработчики сообщений чата ========
@@ -288,15 +275,21 @@ document.addEventListener('DOMContentLoaded', () => {
   function sendMessage() {
     const text = messageInput.value.trim();
     
-    if (text || currentImageData) {
-      socket.emit('chat_message', { 
-        text,
-        roomId: currentRoom,
-        image: currentImageData
-      });
-      messageInput.value = '';
-      clearImageSelection();
-    }
+    // Не отправляем пустые сообщения
+    if (!text && !currentImageData) return;
+    
+    const message = {
+      room: currentRoom,
+      text: text,
+      image: currentImageData
+    };
+    
+    // Отправляем сообщение на сервер
+    socket.emit('chat_message', message);
+    
+    // Очищаем поле ввода
+    messageInput.value = '';
+    clearImageSelection();
   }
   
   // Обработка клика по комнате
@@ -545,5 +538,138 @@ document.addEventListener('DOMContentLoaded', () => {
   // Запрос разрешения на уведомления (для браузерных уведомлений)
   if (Notification && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission();
+  }
+
+  // Обновление дизайна сообщений в чате
+  function createMessageElement(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message');
+    
+    // Определение, собственное ли это сообщение
+    if (message.sender === currentUser) {
+        messageDiv.classList.add('own');
+    }
+    
+    // Если это системное сообщение
+    if (message.isSystem) {
+        messageDiv.classList.add('system-message');
+        messageDiv.textContent = message.text;
+        return messageDiv;
+    }
+    
+    const messageBubble = document.createElement('div');
+    messageBubble.classList.add('message-bubble');
+    
+    const messageMeta = document.createElement('div');
+    messageMeta.classList.add('message-meta');
+    
+    const usernameSpan = document.createElement('span');
+    usernameSpan.classList.add('username');
+    usernameSpan.textContent = message.displayName || message.sender;
+    
+    const timeSpan = document.createElement('span');
+    timeSpan.classList.add('time');
+    timeSpan.textContent = new Date(message.timestamp).toLocaleTimeString();
+    
+    messageMeta.appendChild(usernameSpan);
+    messageMeta.appendChild(timeSpan);
+    
+    const messageText = document.createElement('div');
+    messageText.classList.add('message-text');
+    messageText.textContent = message.text;
+    
+    messageBubble.appendChild(messageMeta);
+    messageBubble.appendChild(messageText);
+    
+    // Если есть изображение
+    if (message.image) {
+        const messageImage = document.createElement('div');
+        messageImage.classList.add('message-image');
+        
+        const img = document.createElement('img');
+        img.src = message.image;
+        img.alt = 'Вложенное изображение';
+        img.addEventListener('click', () => openImageModal(message.image));
+        
+        messageImage.appendChild(img);
+        messageBubble.appendChild(messageImage);
+    }
+    
+    messageDiv.appendChild(messageBubble);
+    return messageDiv;
+  }
+
+  // Функция для открытия модального окна с изображением
+  function openImageModal(imageSrc) {
+    const modal = document.getElementById('image-modal');
+    const modalImg = document.getElementById('modal-image');
+    
+    modalImg.src = imageSrc;
+    modal.classList.add('active');
+    
+    // Закрытие по клику вне изображения
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeImageModal();
+        }
+    });
+  }
+
+  // Функция для закрытия модального окна
+  function closeImageModal() {
+    const modal = document.getElementById('image-modal');
+    modal.classList.remove('active');
+  }
+
+  // Добавляем закрытие по кнопке Esc
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeImageModal();
+    }
+  });
+
+  // Обновляем интерфейс с новым дизайном
+  function initializeUI() {
+    // ... existing code ...
+    
+    // Обработчики закрытия модального окна
+    document.querySelector('.close-btn').addEventListener('click', closeImageModal);
+    
+    // Применение темы
+    applyTheme();
+    
+    // ... existing code ...
+  }
+
+  // Функция для применения космической темы
+  function applyTheme() {
+    document.documentElement.style.setProperty('--primary-color', '#ff8042');
+    document.documentElement.style.setProperty('--secondary-color', '#86b8ce');
+    document.documentElement.style.setProperty('--background-color', '#f7f2ed');
+    document.documentElement.style.setProperty('--message-own', '#ffdbc9');
+    document.documentElement.style.setProperty('--message-other', '#efefef');
+  }
+
+  // Функция для показа экрана авторизации
+  function showAuthScreen() {
+    // Скрываем чат и показываем форму авторизации
+    chatContainer.style.display = 'none';
+    authContainer.style.display = 'flex';
+    
+    // Очищаем поля ввода
+    loginUsername.value = '';
+    loginPassword.value = '';
+    messageInput.value = '';
+    
+    // Очищаем список сообщений
+    messagesContainer.innerHTML = '';
+    
+    // Отключаем сокет
+    socket.disconnect();
+    
+    // Переподключаемся для следующего входа
+    setTimeout(() => {
+      socket.connect();
+    }, 500);
   }
 }); 

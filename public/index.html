@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Простой чат</title>
+  <title>Космический чат</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,7 +14,8 @@
   <!-- Форма авторизации -->
   <div id="auth-container">
     <div class="auth-box">
-      <h1>Простой чат</h1>
+      <h1>Космический чат</h1>
+      <p class="tagline">Общение будущего</p>
       
       <div class="tabs">
         <button class="tab-btn active" data-tab="login">Вход</button>
@@ -67,14 +69,12 @@
   <!-- Контейнер чата -->
   <div id="chat-container" style="display: none;">
     <div class="chat-header">
-      <h2 id="current-room-name">Общий чат</h2>
       <div class="user-info">
         <span id="user-display-name"></span>
-        <div class="notification-toggle">
-          <input type="checkbox" id="notifications-toggle" checked>
-          <label for="notifications-toggle">Уведомления</label>
-        </div>
-        <button id="logout-btn">Выйти</button>
+      </div>
+      <div class="actions">
+        <button id="settings-button">Настройки</button>
+        <button id="logout-button">Выйти</button>
       </div>
     </div>
     
@@ -83,34 +83,29 @@
         <div class="rooms-panel">
           <div class="rooms-header">
             <h3>Комнаты</h3>
-            <button id="create-room-btn" class="small-btn" title="Создать комнату">+</button>
+            <button id="create-room-btn" class="small-btn">+</button>
           </div>
           <div id="rooms-list"></div>
         </div>
-        
         <div class="users-panel">
-          <h3>Пользователи онлайн</h3>
+          <h3>Пользователи</h3>
           <div id="users-list"></div>
         </div>
       </div>
       
       <div class="messages-panel">
         <div id="messages-container"></div>
-        
         <div class="message-input-container">
-          <div class="image-preview-container" id="image-preview-container" style="display: none;">
-            <img id="image-preview" src="" alt="Предпросмотр">
+          <div id="image-preview-container" style="display: none;" class="image-preview-container">
+            <img id="image-preview" src="" alt="Предпросмотр изображения">
             <button id="cancel-image-btn" class="cancel-btn">×</button>
           </div>
-          
           <div class="input-actions">
-            <button id="upload-image-btn" class="action-btn" title="Прикрепить изображение">
-              <span class="icon">📷</span>
-            </button>
-            <input type="file" id="image-input" accept="image/*" style="display: none;">
             <textarea id="message-input" placeholder="Введите сообщение..."></textarea>
-            <button id="send-button">Отправить</button>
+            <button id="attach-button" class="action-btn"><i class="fa fa-paperclip"></i></button>
+            <button id="send-button"><i class="fa fa-paper-plane"></i> Отправить</button>
           </div>
+          <input type="file" id="image-upload" accept="image/*" style="display: none;">
         </div>
       </div>
     </div>
@@ -132,6 +127,19 @@
       <div class="modal-footer">
         <button id="create-room-confirm-btn">Создать</button>
         <button class="cancel-btn">Отмена</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Модальное окно для просмотра изображений -->
+  <div id="image-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Просмотр изображения</h3>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <img id="modal-image" src="" alt="Изображение" style="max-width: 100%; max-height: 70vh;">
       </div>
     </div>
   </div>

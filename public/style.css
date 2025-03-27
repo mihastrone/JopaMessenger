@@ -5,15 +5,28 @@
   padding: 0;
 }
 
+:root {
+  --primary-color: #ff8042; /* Оранжевый */
+  --secondary-color: #86b8ce; /* Голубоватый */
+  --background-color: #f7f2ed; /* Кремовый */
+  --dark-background: #494949; /* Темно-серый */
+  --text-color: #333;
+  --light-text: #fff;
+  --message-own: #ffdbc9; /* Светло-оранжевый */
+  --message-other: #efefef; /* Светло-серый */
+  --header-gradient: linear-gradient(135deg, #ff8042 0%, #ff6e42 100%);
+}
+
 body {
-  font-family: Arial, sans-serif;
-  background-color: #f0f2f5;
-  color: #333;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
   line-height: 1.6;
 }
 
 h1, h2, h3 {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
 }
 
 input, button, textarea {
@@ -24,15 +37,17 @@ input, button, textarea {
 button {
   cursor: pointer;
   padding: 0.5rem 1rem;
-  background-color: #007bff;
-  color: white;
+  background-color: var(--primary-color);
+  color: var(--light-text);
   border: none;
   border-radius: 4px;
-  transition: background-color 0.3s;
+  transition: all 0.2s ease;
 }
 
 button:hover {
-  background-color: #0069d9;
+  background-color: #e66e2f;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 .small-btn {
@@ -48,15 +63,48 @@ button:hover {
   align-items: center;
   min-height: 100vh;
   padding: 1rem;
+  background: var(--header-gradient);
+  background-image: url('https://i.imgur.com/zb5wMGV.jpg');
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+#auth-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 128, 66, 0.7);
+  z-index: 1;
 }
 
 .auth-box {
   width: 100%;
   max-width: 480px;
-  background-color: white;
+  background-color: rgba(255, 255, 255, 0.9);
   border-radius: 10px;
   padding: 2rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 2;
+  backdrop-filter: blur(5px);
+}
+
+.auth-box h1 {
+  color: var(--primary-color);
+  font-size: 2.2rem;
+  text-align: center;
+  margin-bottom: 0.2rem;
+}
+
+.tagline {
+  text-align: center;
+  color: var(--dark-background);
+  margin-bottom: 1.5rem;
+  font-style: italic;
 }
 
 .tabs {
@@ -75,8 +123,8 @@ button:hover {
 }
 
 .tab-btn.active {
-  border-bottom-color: #007bff;
-  color: #007bff;
+  border-bottom-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 .tab-content {
@@ -102,6 +150,13 @@ button:hover {
   padding: 0.75rem;
   border: 1px solid #ddd;
   border-radius: 4px;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus, .form-group textarea:focus {
+  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 128, 66, 0.2);
 }
 
 .form-group button {
@@ -152,7 +207,7 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #007bff;
+  background: var(--header-gradient);
   color: white;
   padding: 1rem;
 }
@@ -184,7 +239,7 @@ button:hover {
 /* Боковая панель */
 .sidebar {
   width: 25%;
-  background-color: #f8f9fa;
+  background-color: var(--background-color);
   border-right: 1px solid #ddd;
   display: flex;
   flex-direction: column;
@@ -221,10 +276,11 @@ button:hover {
 
 .room-item:hover {
   background-color: #e9ecef;
+  transform: translateY(-1px);
 }
 
 .room-item.active {
-  background-color: #007bff;
+  background-color: var(--primary-color);
   color: white;
 }
 
@@ -261,6 +317,7 @@ button:hover {
   flex: 1;
   padding: 1rem;
   overflow-y: auto;
+  background-color: var(--background-color);
 }
 
 .message-input-container {
@@ -268,13 +325,17 @@ button:hover {
   flex-direction: column;
   padding: 1rem;
   border-top: 1px solid #ddd;
-  background-color: #f8f9fa;
+  background-color: var(--background-color);
 }
 
 .input-actions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.5rem;
+  background-color: white;
+  border-radius: 24px;
+  padding: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 #message-input {
@@ -283,21 +344,42 @@ button:hover {
   max-height: 120px;
   resize: vertical;
   padding: 0.75rem;
-  border: 1px solid #ddd;
+  border: none;
   border-radius: 4px;
+  background-color: transparent;
+}
+
+#message-input:focus {
+  outline: none;
 }
 
 .action-btn {
   background: transparent;
-  color: #6c757d;
+  color: var(--primary-color);
   padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: none;
+  border-radius: 50%;
   font-size: 1.2rem;
+  height: 40px;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+#send-button {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  padding: 0 20px;
 }
 
 .action-btn:hover {
-  background-color: #e9ecef;
+  background-color: rgba(255, 128, 66, 0.1);
+  transform: scale(1.05);
 }
 
 .image-preview-container {
@@ -309,8 +391,9 @@ button:hover {
 #image-preview {
   max-width: 200px;
   max-height: 150px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
+  border-radius: 8px;
+  border: 2px solid var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .cancel-btn {
@@ -328,11 +411,12 @@ button:hover {
   align-items: center;
   padding: 0;
   line-height: 1;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 
 /* Стили для сообщений в чате */
 .message {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
   display: flex;
   flex-direction: column;
 }
@@ -342,15 +426,15 @@ button:hover {
 }
 
 .message-bubble {
-  background-color: #f0f0f0;
-  border-radius: 15px;
-  padding: 10px 15px;
+  background-color: var(--message-other);
+  border-radius: 18px;
+  padding: 8px 12px;
   max-width: 70%;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.02);
 }
 
 .message.own .message-bubble {
-  background-color: #e3f2fd;
+  background-color: var(--message-own);
 }
 
 .message-meta {
@@ -371,22 +455,27 @@ button:hover {
 }
 
 .message-image {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .message-image img {
   max-width: 100%;
   max-height: 300px;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.message-image img:hover {
+  transform: scale(1.02);
 }
 
 .system-message {
   text-align: center;
-  padding: 5px 10px;
-  margin: 10px 0;
-  background-color: rgba(0, 0, 0, 0.05);
-  border-radius: 15px;
+  padding: 4px 8px;
+  margin: 8px 0;
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
   font-style: italic;
   color: #666;
 }
@@ -411,10 +500,11 @@ button:hover {
 
 .modal-content {
   background-color: white;
-  border-radius: 8px;
+  border-radius: 12px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
 }
 
 .modal-header {
@@ -423,6 +513,9 @@ button:hover {
   align-items: center;
   padding: 1rem;
   border-bottom: 1px solid #eee;
+  background: var(--header-gradient);
+  color: white;
+  border-radius: 12px 12px 0 0;
 }
 
 .modal-header h3 {
@@ -433,13 +526,18 @@ button:hover {
   background: transparent;
   border: none;
   font-size: 1.5rem;
-  color: #666;
+  color: white;
   cursor: pointer;
   padding: 0;
+  transition: transform 0.2s;
+}
+
+.close-btn:hover {
+  transform: scale(1.1);
 }
 
 .modal-body {
-  padding: 1rem;
+  padding: 1.5rem;
 }
 
 .modal-footer {
