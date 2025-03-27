@@ -87,6 +87,20 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('focus', () => { isWindowActive = true; });
   window.addEventListener('blur', () => { isWindowActive = false; });
   
+  // Шаблоны элементов
+  const messageTemplate = document.getElementById('message-template');
+  const reactionTemplate = document.getElementById('reaction-template');
+  const emojiPicker = document.getElementById('emoji-picker');
+  
+  // Для хранения ссылки на сообщение, к которому добавляется реакция
+  let activeMessageForReaction = null;
+  
+  // Объект для хранения анимаций
+  const animations = {
+    entrances: ['fadeIn', 'slideIn', 'slideInLeft', 'popIn'],
+    highlights: ['pulseHighlight']
+  };
+  
   // ======== Обработчики UI ========
   
   // Переключение между вкладками входа и регистрации
@@ -447,11 +461,289 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   
-  // Отображение сообщения в чате
+  // ======== Функционал реакций ========
+  
+  // Обработчик клика на кнопку добавления реакции
+  document.addEventListener('click', (e) => {
+    // Проверка клика на кнопку добавления реакции
+    if (e.target.closest('.add-reaction-btn')) {
+      const btn = e.target.closest('.add-reaction-btn');
+      const messageEl = btn.closest('.message');
+      
+      // Сохраняем ссылку на активное сообщение
+      activeMessageForReaction = messageEl;
+      
+      // Позиционируем панель эмодзи у кнопки
+      const rect = btn.getBoundingClientRect();
+      emojiPicker.style.left = `${rect.left}px`;
+      emojiPicker.style.top = `${rect.bottom + 5}px`;
+      
+      // Если панель слишком близко к правому краю, корректируем позицию
+      if (rect.left + emojiPicker.offsetWidth > window.innerWidth) {
+        emojiPicker.style.left = `${window.innerWidth - emojiPicker.offsetWidth - 10}px`;
+      }
+      
+      // Показываем панель
+      emojiPicker.classList.add('active');
+      
+      e.stopPropagation();
+    }
+    
+    // Проверка клика на эмодзи в панели
+    if (e.target.closest('.emoji-item')) {
+      const emojiItem = e.target.closest('.emoji-item');
+      const emoji = emojiItem.dataset.emoji;
+      
+      if (activeMessageForReaction) {
+        const messageId = activeMessageForReaction.dataset.messageId;
+        
+        // Отправляем реакцию на сервер
+        socket.emit('add_reaction', {
+          messageId,
+          emoji,
+          roomId: currentRoom
+        });
+        
+        // Скрываем панель эмодзи
+        emojiPicker.classList.remove('active');
+      }
+    }
+    
+    // Проверка клика на реакцию (для отмены)
+    if (e.target.closest('.reaction')) {
+      const reactionEl = e.target.closest('.reaction');
+      const messageEl = reactionEl.closest('.message');
+      const messageId = messageEl.dataset.messageId;
+      const emoji = reactionEl.dataset.emoji;
+      
+      // Проверяем, уже поставил ли пользователь эту реакцию
+      if (reactionEl.classList.contains('active')) {
+        // Отправляем запрос на удаление реакции
+        socket.emit('remove_reaction', {
+          messageId,
+          emoji,
+          roomId: currentRoom
+        });
+      } else {
+        // Отправляем запрос на добавление реакции
+        socket.emit('add_reaction', {
+          messageId,
+          emoji,
+          roomId: currentRoom
+        });
+      }
+    }
+    
+    // Закрытие панели эмодзи при клике вне её
+    if (!e.target.closest('.emoji-picker') && !e.target.closest('.add-reaction-btn')) {
+      emojiPicker.classList.remove('active');
+    }
+  });
+  
+  // Обновление отображения реакций для сообщения
+  function updateMessageReactions(messageId, reactions) {
+    const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+    if (!messageEl) return;
+    
+    const reactionsContainer = messageEl.querySelector('.message-reactions');
+    reactionsContainer.innerHTML = '';
+    
+    // Если нет реакций, просто выходим
+    if (!reactions || Object.keys(reactions).length === 0) return;
+    
+    // Добавляем каждую реакцию
+    Object.entries(reactions).forEach(([emoji, users]) => {
+      // Клонируем шаблон реакции
+      const reactionNode = reactionTemplate.content.cloneNode(true);
+      const reactionEl = reactionNode.querySelector('.reaction');
+      
+      // Заполняем данные реакции
+      reactionEl.dataset.emoji = emoji;
+      reactionEl.querySelector('.reaction-emoji').textContent = emoji;
+      reactionEl.querySelector('.reaction-count').textContent = users.length;
+      
+      // Проверяем, поставил ли текущий пользователь эту реакцию
+      if (users.includes(currentUser.username)) {
+        reactionEl.classList.add('active');
+      }
+      
+      reactionsContainer.appendChild(reactionEl);
+    });
+  }
+  
+  // ======== Обновление функции создания сообщения ========
+  
+  // Обновленная функция создания элемента сообщения
+  function createMessageElement(message) {
+    // Если это системное сообщение, используем простую структуру
+    if (message.isSystem) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message', 'system-message');
+      messageDiv.textContent = message.text;
+      return messageDiv;
+    }
+    
+    // Клонируем шаблон сообщения
+    const messageNode = messageTemplate.content.cloneNode(true);
+    const messageDiv = messageNode.querySelector('.message');
+    messageDiv.dataset.messageId = message.id;
+    
+    // Определение, собственное ли это сообщение
+    if (message.sender === currentUser?.username || message.username === currentUser?.username) {
+      messageDiv.classList.add('own');
+    }
+    
+    // Применяем случайную анимацию входа для сообщения
+    applyRandomAnimation(messageDiv, 'entrance');
+    
+    const messageBubble = messageDiv.querySelector('.message-bubble');
+    const usernameSpan = messageDiv.querySelector('.username');
+    const timeSpan = messageDiv.querySelector('.time');
+    const messageText = messageDiv.querySelector('.message-text');
+    const messageImage = messageDiv.querySelector('.message-image');
+    
+    // Заполняем данные сообщения
+    usernameSpan.textContent = message.displayName || message.sender || message.username;
+    timeSpan.textContent = new Date(message.timestamp).toLocaleTimeString();
+    messageText.textContent = message.text;
+    
+    // Проверка на администратора
+    const isAdminMessage = message.isAdmin || 
+                          (message.displayName && message.displayName.includes('(Админ)'));
+    
+    if (isAdminMessage) {
+      usernameSpan.classList.add('admin');
+    }
+    
+    // Добавляем кнопку удаления, если это собственное сообщение или пользователь - админ
+    const isOwnMessage = message.username === currentUser?.username || message.sender === currentUser?.username;
+    
+    if (isOwnMessage || currentUser?.isAdmin) {
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'delete-message';
+      deleteButton.innerHTML = '<i class="fa fa-trash"></i>';
+      deleteButton.title = 'Удалить сообщение';
+      
+      deleteButton.addEventListener('click', () => {
+        if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
+          socket.emit('delete_message', {
+            messageId: message.id,
+            roomId: currentRoom
+          });
+        }
+      });
+      
+      messageDiv.querySelector('.message-meta').appendChild(deleteButton);
+    }
+    
+    // Если есть изображение
+    if (message.image) {
+      const img = messageImage.querySelector('img');
+      img.src = message.image;
+      img.alt = 'Вложенное изображение';
+      img.addEventListener('click', () => openImageModal(message.image));
+    } else {
+      // Если изображения нет, скрываем контейнер
+      messageImage.style.display = 'none';
+    }
+    
+    // Если есть реакции, добавляем их
+    if (message.reactions) {
+      updateMessageReactions(message.id, message.reactions);
+    }
+    
+    return messageDiv;
+  }
+  
+  // Функция для применения случайной анимации
+  function applyRandomAnimation(element, type) {
+    let animationList;
+    
+    switch(type) {
+      case 'entrance':
+        animationList = animations.entrances;
+        break;
+      case 'highlight':
+        animationList = animations.highlights;
+        break;
+      default:
+        return;
+    }
+    
+    // Выбираем случайную анимацию из списка
+    const randomAnimation = animationList[Math.floor(Math.random() * animationList.length)];
+    
+    // Удаляем все предыдущие классы анимаций
+    element.classList.remove(...animations.entrances, ...animations.highlights);
+    
+    // Добавляем новую анимацию
+    element.classList.add(randomAnimation);
+    
+    // Прослушиваем окончание анимации
+    element.addEventListener('animationend', () => {
+      // Удаляем класс анимации, если это highlight (временная анимация)
+      if (type === 'highlight') {
+        element.classList.remove(randomAnimation);
+      }
+    }, { once: true });
+  }
+  
+  // ======== Socket.IO обработчики для реакций ========
+  
+  // Получение обновлений реакций
+  socket.on('reactions_updated', (data) => {
+    updateMessageReactions(data.messageId, data.reactions);
+  });
+  
+  // Обновленный обработчик получения сообщения
+  socket.on('chat_message', (message) => {
+    const messageEl = displayMessage(message);
+    
+    // Подсвечиваем новое сообщение, если оно не от текущего пользователя
+    if (message.username !== currentUser?.username && message.sender !== currentUser?.username) {
+      setTimeout(() => {
+        applyRandomAnimation(messageEl, 'highlight');
+      }, 300);
+    }
+  });
+  
+  // Обновленный обработчик удаления сообщения
+  socket.on('message_deleted', (data) => {
+    const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
+    
+    if (messageElement) {
+      // Добавляем класс анимации удаления
+      messageElement.classList.add('deleting');
+      
+      // Ждем окончания анимации
+      messageElement.addEventListener('animationend', () => {
+        // Отображаем системное сообщение об удалении
+        const deletedByText = data.deletedBy === 'admin' ? 'администратором' : 'автором';
+        const systemMessage = document.createElement('div');
+        systemMessage.className = 'system-message deletion-message';
+        systemMessage.textContent = `Сообщение было удалено ${deletedByText}`;
+        
+        // Заменяем удаленное сообщение системным уведомлением
+        messageElement.parentNode.replaceChild(systemMessage, messageElement);
+        
+        // Удаляем уведомление через некоторое время с анимацией
+        setTimeout(() => {
+          systemMessage.classList.add('deleting');
+          systemMessage.addEventListener('animationend', () => {
+            if (systemMessage.parentNode) {
+              systemMessage.parentNode.removeChild(systemMessage);
+            }
+          }, { once: true });
+        }, 5000);
+      }, { once: true });
+    }
+  });
+  
+  // Модифицированная функция отображения сообщения, теперь возвращает созданный элемент
   function displayMessage(message) {
     // Проверяем принадлежность сообщения текущей комнате
     if (message.roomId && message.roomId !== currentRoom) {
-      return;
+      return null;
     }
     
     // Если это сообщение из другой комнаты, проигрываем уведомление
@@ -460,42 +752,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Создаем элемент сообщения
-    const messageElement = createMessageElement({
-      id: message.id,
-      sender: message.username,
-      username: message.username,
-      displayName: message.displayName || message.username,
-      text: message.text,
-      image: message.image,
-      timestamp: message.timestamp,
-      isSystem: message.system,
-      isAdmin: message.isAdmin
-    });
+    const messageElement = createMessageElement(message);
     
     messagesContainer.appendChild(messageElement);
     scrollToBottom();
-  }
-  
-  // Функция для прокрутки к последнему сообщению
-  function scrollToBottom() {
-    const messagesContainer = document.getElementById('messages-container');
     
-    // Плавная прокрутка с анимацией
-    messagesContainer.scrollTo({
-      top: messagesContainer.scrollHeight,
-      behavior: 'smooth'
-    });
-  }
-  
-  // Обновление списка пользователей
-  function updateUsersList(users) {
-    usersList.innerHTML = '';
-    users.forEach(user => {
-      const userItem = document.createElement('div');
-      userItem.className = 'user-item';
-      userItem.textContent = user.displayName || user.username;
-      usersList.appendChild(userItem);
-    });
+    return messageElement;
   }
   
   // ======== Socket.IO обработчики ========
@@ -572,11 +834,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       scrollToBottom();
     }
-  });
-  
-  // Получение нового сообщения
-  socket.on('chat_message', (message) => {
-    displayMessage(message);
   });
   
   // Обновление списка пользователей
@@ -928,17 +1185,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
       
-      // Предотвращаем стандартное поведение перетаскивания на мобильных устройствах
-      messagesContainer.addEventListener('touchmove', function(e) {
-        // Если мы находимся в нижней части контейнера и пытаемся прокрутить дальше вниз
-        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
-        
-        // Если находимся близко к низу и пытаемся прокрутить дальше вниз
-        if (isAtBottom && e.touches[0].clientY < window.innerHeight - 100) {
-          // Не позволяем перетаскивать контент за пределы экрана
-          e.preventDefault();
+      // Удаляем обработчик touchmove с preventDefault, который мешает прокрутке
+      messagesContainer.removeEventListener('touchmove', handleTouchMove);
+      
+      // Добавляем улучшенный обработчик для прокрутки на мобильных устройствах
+      let startY = 0;
+      
+      messagesContainer.addEventListener('touchstart', function(e) {
+        startY = e.touches[0].clientY;
+      }, { passive: true });
+      
+      // Отслеживаем окончание прокрутки для проверки видимости поля ввода
+      messagesContainer.addEventListener('touchend', function() {
+        if (messageInputContainer) {
+          setTimeout(() => {
+            messageInputContainer.style.display = 'flex';
+            messageInputContainer.style.bottom = '0';
+          }, 100);
         }
-      }, { passive: false });
+      }, { passive: true });
     }
     
     // Решение проблемы с виртуальной клавиатурой
@@ -990,6 +1255,42 @@ document.addEventListener('DOMContentLoaded', () => {
           }, 100);
         }
       }
+    });
+  }
+
+  // Функция для прокрутки к последнему сообщению с оптимизацией для мобильных устройств
+  function scrollToBottom() {
+    const messagesContainer = document.getElementById('messages-container');
+    
+    // Используем requestAnimationFrame для более плавной прокрутки
+    requestAnimationFrame(() => {
+      // Проверка на iOS Safari, где scrollHeight может быть неправильным
+      const scrollHeight = Math.max(
+        messagesContainer.scrollHeight,
+        messagesContainer.clientHeight
+      );
+      
+      // Плавная прокрутка с анимацией для десктопов
+      if (window.innerWidth > 768) {
+        messagesContainer.scrollTo({
+          top: scrollHeight,
+          behavior: 'smooth'
+        });
+      } else {
+        // Мгновенная прокрутка для мобильных устройств для лучшей производительности
+        messagesContainer.scrollTop = scrollHeight;
+      }
+    });
+  }
+  
+  // Обновление списка пользователей
+  function updateUsersList(users) {
+    usersList.innerHTML = '';
+    users.forEach(user => {
+      const userItem = document.createElement('div');
+      userItem.className = 'user-item';
+      userItem.textContent = user.displayName || user.username;
+      usersList.appendChild(userItem);
     });
   }
 }); 

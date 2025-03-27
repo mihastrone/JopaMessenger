@@ -194,6 +194,59 @@
     </div>
   </div>
   
+  <!-- Модальное окно для эмодзи -->
+  <div id="emoji-picker" class="emoji-picker">
+    <div class="emoji-list">
+      <div class="emoji-item" data-emoji="👍">👍</div>
+      <div class="emoji-item" data-emoji="👎">👎</div>
+      <div class="emoji-item" data-emoji="❤️">❤️</div>
+      <div class="emoji-item" data-emoji="😂">😂</div>
+      <div class="emoji-item" data-emoji="😮">😮</div>
+      <div class="emoji-item" data-emoji="😢">😢</div>
+      <div class="emoji-item" data-emoji="🔥">🔥</div>
+      <div class="emoji-item" data-emoji="👏">👏</div>
+      <div class="emoji-item" data-emoji="🎉">🎉</div>
+      <div class="emoji-item" data-emoji="🚀">🚀</div>
+      <div class="emoji-item" data-emoji="👀">👀</div>
+      <div class="emoji-item" data-emoji="💯">💯</div>
+      <div class="emoji-item" data-emoji="💪">💪</div>
+      <div class="emoji-item" data-emoji="🤩">🤩</div>
+      <div class="emoji-item" data-emoji="🤔">🤔</div>
+      <div class="emoji-item" data-emoji="👻">👻</div>
+      <div class="emoji-item" data-emoji="🎯">🎯</div>
+      <div class="emoji-item" data-emoji="🎮">🎮</div>
+      <div class="emoji-item" data-emoji="💻">💻</div>
+      <div class="emoji-item" data-emoji="🌝">🌝</div>
+      <div class="emoji-item" data-emoji="🌟">🌟</div>
+    </div>
+  </div>
+  
+  <!-- Шаблон для сообщения и реакций (будет скрыт) -->
+  <template id="message-template">
+    <div class="message">
+      <div class="message-bubble">
+        <div class="message-meta">
+          <span class="username"></span>
+          <span class="time"></span>
+        </div>
+        <div class="message-text"></div>
+        <div class="message-image">
+          <img src="" alt="Вложенное изображение">
+        </div>
+      </div>
+      <div class="message-reactions"></div>
+      <button class="add-reaction-btn"><i class="fas fa-smile"></i> Реакция</button>
+    </div>
+  </template>
+  
+  <!-- Шаблон для отображения реакции -->
+  <template id="reaction-template">
+    <div class="reaction" data-emoji="">
+      <span class="reaction-emoji"></span>
+      <span class="reaction-count"></span>
+    </div>
+  </template>
+  
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
 </body>

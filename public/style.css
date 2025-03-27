@@ -426,6 +426,10 @@ button:hover {
   padding: 1rem;
   overflow-y: auto;
   background: linear-gradient(to bottom, var(--background-color) 0%, rgba(230, 192, 170, 0.8) 100%);
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .message-input-container {
@@ -528,10 +532,16 @@ button:hover {
   margin-bottom: 0.75rem;
   display: flex;
   flex-direction: column;
+  animation: fadeIn 0.3s ease-out forwards;
 }
 
 .message.own {
   align-items: flex-end;
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+.message:not(.own):not(.system-message) {
+  animation: slideInLeft 0.3s ease-out forwards;
 }
 
 .message-bubble {
@@ -541,6 +551,7 @@ button:hover {
   max-width: 70%;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.02);
   position: relative;
+  animation: popIn 0.3s ease-out forwards;
 }
 
 .message.own .message-bubble {
@@ -624,6 +635,9 @@ button:hover {
   border-radius: 8px;
   cursor: pointer;
   transition: transform 0.2s;
+  animation: fadeIn 0.5s ease-out forwards;
+  opacity: 0;
+  animation-delay: 0.1s;
 }
 
 .message-image img:hover {
@@ -638,6 +652,7 @@ button:hover {
   border-radius: 12px;
   font-style: italic;
   color: #666;
+  animation: fadeIn 0.4s ease-out forwards;
 }
 
 /* Модальное окно */
@@ -808,6 +823,13 @@ button:hover {
     left: 0;
     right: 0;
     bottom: 50px;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    will-change: scroll-position;
+    margin: 0;
+    padding: 0.5rem 1rem 60px 1rem;
   }
   
   .message-input-container {
@@ -822,6 +844,9 @@ button:hover {
     height: 50px;
     display: flex !important;
     flex-direction: row !important;
+    /* Добавляем аппаратное ускорение для плавности */
+    transform: translateZ(0);
+    will-change: transform;
   }
   
   .input-actions {
@@ -933,4 +958,181 @@ button:hover {
 
 #room-password-modal .form-group {
   margin-top: 15px;
+}
+
+/* Стили для улучшенного отклика на мобильных устройствах */
+.message-bubble, .room-item, .action-btn, #send-button, button {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  touch-action: manipulation;
+}
+
+/* Оптимизация для мобильных устройств */
+@media (max-width: 768px) {
+  .room-item, .user-item, button, .action-btn, #send-button {
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+    user-select: none;
+  }
+  
+  .message-input-container {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 6px;
+    z-index: 1000;
+    background-color: var(--background-color);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    height: 50px;
+    display: flex !important;
+    flex-direction: row !important;
+    /* Добавляем аппаратное ускорение для плавности */
+    transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* Анимации для сообщений */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  70% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulseHighlight {
+  0% { background-color: rgba(255, 206, 166, 0.5); }
+  50% { background-color: rgba(255, 206, 166, 1); }
+  100% { background-color: inherit; }
+}
+
+/* Стили для реакций-эмодзи */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.reaction {
+  display: flex;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 3px 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  animation: popIn 0.3s ease-out forwards;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.reaction:hover {
+  background-color: rgba(255, 255, 255, 0.9);
+  transform: scale(1.05);
+}
+
+.reaction.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.reaction-emoji {
+  margin-right: 3px;
+  font-size: 1rem;
+}
+
+.reaction-count {
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.add-reaction-btn {
+  margin-top: 4px;
+  background: transparent;
+  color: #aaa;
+  border: none;
+  padding: 2px 5px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.message:hover .add-reaction-btn {
+  opacity: 0.7;
+}
+
+.add-reaction-btn:hover {
+  color: var(--primary-color);
+  background-color: rgba(255, 128, 66, 0.1);
+  opacity: 1 !important;
+}
+
+/* Панель выбора эмодзи */
+.emoji-picker {
+  display: none;
+  position: absolute;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  width: 220px;
+  z-index: 100;
+  animation: popIn 0.3s ease-out forwards;
+}
+
+.emoji-picker.active {
+  display: block;
+}
+
+.emoji-list {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.emoji-item {
+  font-size: 1.2rem;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.emoji-item:hover {
+  background-color: #f0f0f0;
+  transform: scale(1.2);
+}
+
+/* Анимация при удалении сообщения */
+.message.deleting {
+  animation: fadeIn 0.3s ease-out backwards reverse;
+}
+
+/* Анимация при подсветке нового сообщения */
+.message.highlight {
+  animation: pulseHighlight 1.5s ease-out forwards;
 } 

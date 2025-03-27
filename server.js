@@ -69,7 +69,8 @@ try {
         name: 'Общий чат',
         creator: 'system',
         createdAt: new Date().toISOString(),
-        messages: []
+        messages: [],
+        members: []
       }
     };
     fs.writeFileSync(ROOMS_FILE, JSON.stringify(rooms, null, 2));
@@ -83,7 +84,8 @@ try {
       name: 'Общий чат',
       creator: 'system',
       createdAt: new Date().toISOString(),
-      messages: []
+      messages: [],
+      members: []
     }
   };
 }
@@ -337,41 +339,106 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Обработка сообщения чата
+  socket.on('chat_message', (data) => {
+    if (!socket.user) return;
+    
+    const { text, image, room: roomId } = data;
+    const roomObj = rooms[roomId];
+    
+    if (!roomObj) return;
+    
+    // Обрабатываем изображение, если оно есть
+    let imageUrl = null;
+    if (image) {
+      imageUrl = saveImage(image);
+    }
+    
+    // Создаем новое сообщение
+    const message = {
+      id: generateId(),
+      username: socket.user.username,
+      displayName: socket.user.displayName,
+      text: text,
+      image: imageUrl,
+      timestamp: new Date(),
+      roomId: roomId,
+      isAdmin: socket.user.isAdmin,
+      reactions: {} // Инициализируем пустой объект реакций
+    };
+    
+    // Добавляем сообщение в историю комнаты
+    roomObj.messages.push(message);
+    
+    // Отправляем сообщение всем в комнате
+    io.to(roomId).emit('chat_message', message);
+    
+    console.log(`Новое сообщение в комнате ${roomId} от ${socket.user.displayName}`);
+    
+    // Сохраняем комнаты
+    saveRooms();
+  });
+
   // Присоединение к комнате
   socket.on('join_room', (roomId) => {
     if (!socket.user) {
       socket.emit('error', { message: 'Вы не авторизованы' });
       return;
     }
-
-    // Проверяем существование комнаты
-    if (!rooms[roomId]) {
+    
+    // Если пользователь уже в какой-то комнате, покидаем её
+    if (socket.currentRoom) {
+      socket.leave(socket.currentRoom);
+    }
+    
+    // Получаем объект комнаты
+    const room = rooms[roomId];
+    
+    if (!room) {
       socket.emit('error', { message: 'Комната не найдена' });
       return;
     }
-
+    
+    // Проверяем, требуется ли пароль для входа
+    if (room.password && !room.members.includes(socket.user.username)) {
+      socket.emit('error', { message: 'Для входа в эту комнату требуется пароль' });
+      return;
+    }
+    
     // Присоединяемся к комнате
     socket.join(roomId);
     socket.currentRoom = roomId;
-
-    console.log(`${socket.user.displayName} присоединился к комнате ${rooms[roomId].name}`);
-
-    // Отправляем историю сообщений комнаты
+    
+    console.log(`${socket.user.displayName} присоединился к комнате ${room.name}`);
+    
+    // Добавляем пользователя в список участников комнаты, если его там еще нет
+    if (!room.members.includes(socket.user.username)) {
+      room.members.push(socket.user.username);
+      saveRooms();
+    }
+    
+    // Отправляем историю сообщений
     socket.emit('room_messages', {
       roomId,
-      messages: rooms[roomId].messages || []
+      messages: room.messages.map(msg => ({
+        ...msg,
+        reactions: msg.reactions || {} // Гарантируем, что все сообщения имеют поле reactions
+      }))
     });
-
+    
     // Отправляем уведомление всем в комнате
     const joinMessage = {
       system: true,
       text: `${socket.user.displayName} присоединился к комнате`,
-      timestamp: Date.now(),
+      timestamp: new Date(),
       roomId
     };
-
-    rooms[roomId].messages.push(joinMessage);
+    
+    room.messages.push(joinMessage);
     io.to(roomId).emit('chat_message', joinMessage);
+    
+    // Обновляем список пользователей в комнате
+    updateUsers();
   });
 
   // Создание комнаты
@@ -397,7 +464,8 @@ io.on('connection', (socket) => {
       creator: socket.user.username,
       createdAt: new Date().toISOString(),
       messages: [],
-      hasPassword: hasPassword
+      hasPassword: hasPassword,
+      members: []
     };
     
     // Если указан пароль, хешируем его и сохраняем
@@ -446,64 +514,6 @@ io.on('connection', (socket) => {
     });
 
     console.log(`Создана новая комната "${name.trim()}" (${roomId}) пользователем ${socket.user.displayName}`);
-  });
-
-  // Обработка сообщений
-  socket.on('chat_message', (message) => {
-    // Проверяем, авторизован ли пользователь
-    if (!socket.user) {
-      console.log('Попытка отправить сообщение неавторизованным пользователем');
-      socket.emit('error', { message: 'Вы не авторизованы' });
-      return;
-    }
-
-    // Определяем комнату
-    const roomId = message.roomId || socket.currentRoom || 'general';
-    
-    // Проверяем существование комнаты
-    if (!rooms[roomId]) {
-      socket.emit('error', { message: 'Комната не найдена' });
-      return;
-    }
-
-    // Обрабатываем изображение, если оно есть
-    let imageUrl = null;
-    if (message.image) {
-      imageUrl = saveImage(message.image);
-    }
-
-    // Создаем объект сообщения
-    const newMessage = {
-      id: generateId(),
-      text: message.text,
-      username: socket.user.username,
-      displayName: socket.user.displayName,
-      timestamp: Date.now(),
-      roomId,
-      image: imageUrl
-    };
-
-    console.log(`Новое сообщение в комнате ${roomId} от ${socket.user.displayName}`);
-
-    // Сохраняем сообщение
-    if (!rooms[roomId].messages) {
-      rooms[roomId].messages = [];
-    }
-    
-    rooms[roomId].messages.push(newMessage);
-    
-    // Ограничиваем историю сообщений
-    if (rooms[roomId].messages.length > 100) {
-      rooms[roomId].messages.shift();
-    }
-
-    // Отправляем сообщение всем в комнате
-    io.to(roomId).emit('chat_message', newMessage);
-    
-    // Периодически сохраняем историю
-    if (rooms[roomId].messages.length % 10 === 0) {
-      saveRooms();
-    }
   });
 
   // Получение сообщений комнаты
@@ -667,6 +677,86 @@ io.on('connection', (socket) => {
     socket.emit('join_protected_room_response', { 
       success: true 
     });
+  });
+
+  // Обработка добавления реакции к сообщению
+  socket.on('add_reaction', (data) => {
+    if (!socket.user) return;
+    
+    const { messageId, emoji, roomId } = data;
+    const room = rooms[roomId];
+    
+    if (!room) return;
+    
+    // Ищем сообщение
+    const message = room.messages.find(m => m.id === messageId);
+    
+    if (!message) return;
+    
+    // Инициализируем объект реакций, если его еще нет
+    if (!message.reactions) {
+      message.reactions = {};
+    }
+    
+    // Инициализируем массив пользователей для этой реакции, если его еще нет
+    if (!message.reactions[emoji]) {
+      message.reactions[emoji] = [];
+    }
+    
+    // Проверяем, поставил ли уже пользователь эту реакцию
+    if (!message.reactions[emoji].includes(socket.user.username)) {
+      // Добавляем реакцию
+      message.reactions[emoji].push(socket.user.username);
+      
+      // Отправляем обновление клиентам
+      io.to(roomId).emit('reactions_updated', {
+        messageId,
+        reactions: message.reactions
+      });
+      
+      // Сохраняем изменения
+      saveRooms();
+    }
+  });
+  
+  // Обработка удаления реакции к сообщению
+  socket.on('remove_reaction', (data) => {
+    if (!socket.user) return;
+    
+    const { messageId, emoji, roomId } = data;
+    const room = rooms[roomId];
+    
+    if (!room) return;
+    
+    // Ищем сообщение
+    const message = room.messages.find(m => m.id === messageId);
+    
+    if (!message || !message.reactions || !message.reactions[emoji]) return;
+    
+    // Удаляем пользователя из списка поставивших эту реакцию
+    const index = message.reactions[emoji].indexOf(socket.user.username);
+    if (index !== -1) {
+      message.reactions[emoji].splice(index, 1);
+      
+      // Если реакций этого типа больше нет, удаляем ключ
+      if (message.reactions[emoji].length === 0) {
+        delete message.reactions[emoji];
+      }
+      
+      // Если реакций вообще больше нет, удаляем объект реакций
+      if (Object.keys(message.reactions).length === 0) {
+        delete message.reactions;
+      }
+      
+      // Отправляем обновление клиентам
+      io.to(roomId).emit('reactions_updated', {
+        messageId,
+        reactions: message.reactions || {}
+      });
+      
+      // Сохраняем изменения
+      saveRooms();
+    }
   });
 
   // Отключение пользователя
