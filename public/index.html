@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Аудио для уведомлений -->
+  <audio id="notification-sound" src="sounds/notification.mp3" preload="auto"></audio>
+  
   <!-- Форма авторизации -->
   <div id="auth-container">
     <div class="auth-box">
@@ -64,26 +67,71 @@
   <!-- Контейнер чата -->
   <div id="chat-container" style="display: none;">
     <div class="chat-header">
-      <h2>Общий чат</h2>
+      <h2 id="current-room-name">Общий чат</h2>
       <div class="user-info">
         <span id="user-display-name"></span>
+        <div class="notification-toggle">
+          <input type="checkbox" id="notifications-toggle" checked>
+          <label for="notifications-toggle">Уведомления</label>
+        </div>
         <button id="logout-btn">Выйти</button>
       </div>
     </div>
     
     <div class="chat-main">
-      <div class="users-panel">
-        <h3>Пользователи онлайн</h3>
-        <div id="users-list"></div>
+      <div class="sidebar">
+        <div class="rooms-panel">
+          <div class="rooms-header">
+            <h3>Комнаты</h3>
+            <button id="create-room-btn" class="small-btn" title="Создать комнату">+</button>
+          </div>
+          <div id="rooms-list"></div>
+        </div>
+        
+        <div class="users-panel">
+          <h3>Пользователи онлайн</h3>
+          <div id="users-list"></div>
+        </div>
       </div>
       
       <div class="messages-panel">
         <div id="messages-container"></div>
         
         <div class="message-input-container">
-          <input type="text" id="message-input" placeholder="Введите сообщение...">
-          <button id="send-button">Отправить</button>
+          <div class="image-preview-container" id="image-preview-container" style="display: none;">
+            <img id="image-preview" src="" alt="Предпросмотр">
+            <button id="cancel-image-btn" class="cancel-btn">×</button>
+          </div>
+          
+          <div class="input-actions">
+            <button id="upload-image-btn" class="action-btn" title="Прикрепить изображение">
+              <span class="icon">📷</span>
+            </button>
+            <input type="file" id="image-input" accept="image/*" style="display: none;">
+            <textarea id="message-input" placeholder="Введите сообщение..."></textarea>
+            <button id="send-button">Отправить</button>
+          </div>
         </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Модальное окно создания комнаты -->
+  <div id="create-room-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Создание новой комнаты</h3>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="room-name">Название комнаты:</label>
+          <input type="text" id="room-name" placeholder="Введите название комнаты">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="create-room-confirm-btn">Создать</button>
+        <button class="cancel-btn">Отмена</button>
       </div>
     </div>
   </div>

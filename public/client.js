@@ -31,9 +31,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const messageInput = document.getElementById('message-input');
   const sendButton = document.getElementById('send-button');
   const logoutBtn = document.getElementById('logout-btn');
+  const currentRoomName = document.getElementById('current-room-name');
+  const roomsList = document.getElementById('rooms-list');
+  const createRoomBtn = document.getElementById('create-room-btn');
+  const notificationsToggle = document.getElementById('notifications-toggle');
   
-  // Данные пользователя
+  // Модальное окно создания комнаты
+  const createRoomModal = document.getElementById('create-room-modal');
+  const roomNameInput = document.getElementById('room-name');
+  const createRoomConfirmBtn = document.getElementById('create-room-confirm-btn');
+  const closeModalBtns = document.querySelectorAll('.close-btn, .cancel-btn');
+  
+  // Загрузка изображений
+  const uploadImageBtn = document.getElementById('upload-image-btn');
+  const imageInput = document.getElementById('image-input');
+  const imagePreviewContainer = document.getElementById('image-preview-container');
+  const imagePreview = document.getElementById('image-preview');
+  const cancelImageBtn = document.getElementById('cancel-image-btn');
+  
+  // Звуковое уведомление
+  const notificationSound = document.getElementById('notification-sound');
+  
+  // Данные пользователя и чата
   let currentUser = null;
+  let currentRoom = 'general';
+  let currentImageData = null;
+  let rooms = [];
+  
+  // Флаг активности окна
+  let isWindowActive = true;
+  window.addEventListener('focus', () => { isWindowActive = true; });
+  window.addEventListener('blur', () => { isWindowActive = false; });
   
   // ======== Обработчики UI ========
   
@@ -58,6 +86,82 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   
+  // Открытие модального окна создания комнаты
+  createRoomBtn.addEventListener('click', () => {
+    createRoomModal.classList.add('active');
+    roomNameInput.value = '';
+    roomNameInput.focus();
+  });
+  
+  // Закрытие модального окна
+  closeModalBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      createRoomModal.classList.remove('active');
+    });
+  });
+  
+  // Создание комнаты
+  createRoomConfirmBtn.addEventListener('click', () => {
+    const roomName = roomNameInput.value.trim();
+    if (roomName) {
+      socket.emit('create_room', { name: roomName });
+      createRoomModal.classList.remove('active');
+    } else {
+      alert('Введите название комнаты');
+    }
+  });
+  
+  // Обработчик нажатия Enter в поле названия комнаты
+  roomNameInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      createRoomConfirmBtn.click();
+    }
+  });
+  
+  // Загрузка изображения
+  uploadImageBtn.addEventListener('click', () => {
+    imageInput.click();
+  });
+  
+  // Обработка выбора изображения
+  imageInput.addEventListener('change', () => {
+    const file = imageInput.files[0];
+    if (file) {
+      // Проверка типа файла
+      if (!file.type.startsWith('image/')) {
+        alert('Пожалуйста, выберите изображение');
+        return;
+      }
+      
+      // Проверка размера файла (макс. 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Размер изображения не должен превышать 5MB');
+        return;
+      }
+      
+      // Чтение и отображение изображения
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        imagePreview.src = e.target.result;
+        imagePreviewContainer.style.display = 'block';
+        currentImageData = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+  
+  // Отмена выбора изображения
+  cancelImageBtn.addEventListener('click', () => {
+    clearImageSelection();
+  });
+  
+  // Очистка выбранного изображения
+  function clearImageSelection() {
+    imageInput.value = '';
+    imagePreviewContainer.style.display = 'none';
+    currentImageData = null;
+  }
+  
   // ======== Функции для работы с сообщениями ========
   
   // Отображение сообщения
@@ -77,6 +181,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function clearMessages() {
     loginMessage.style.display = 'none';
     registerMessage.style.display = 'none';
+  }
+  
+  // Воспроизведение звукового уведомления
+  function playNotificationSound() {
+    if (notificationsToggle.checked && !isWindowActive) {
+      notificationSound.currentTime = 0;
+      notificationSound.play().catch(err => console.log('Ошибка воспроизведения:', err));
+    }
   }
   
   // ======== Обработчики авторизации ========
@@ -167,7 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
   sendButton.addEventListener('click', sendMessage);
   
   messageInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       sendMessage();
     }
   });
@@ -175,14 +288,81 @@ document.addEventListener('DOMContentLoaded', () => {
   function sendMessage() {
     const text = messageInput.value.trim();
     
-    if (text) {
-      socket.emit('chat_message', { text });
+    if (text || currentImageData) {
+      socket.emit('chat_message', { 
+        text,
+        roomId: currentRoom,
+        image: currentImageData
+      });
       messageInput.value = '';
+      clearImageSelection();
     }
+  }
+  
+  // Обработка клика по комнате
+  function handleRoomClick(roomId, roomName) {
+    if (currentRoom !== roomId) {
+      currentRoom = roomId;
+      
+      // Обновляем название комнаты
+      currentRoomName.textContent = roomName;
+      
+      // Очищаем контейнер сообщений
+      messagesContainer.innerHTML = '';
+      
+      // Присоединяемся к комнате
+      socket.emit('join_room', roomId);
+      
+      // Обновляем активную комнату в списке
+      updateActiveRoom();
+    }
+  }
+  
+  // Обновление активной комнаты в списке
+  function updateActiveRoom() {
+    document.querySelectorAll('.room-item').forEach(item => {
+      item.classList.remove('active');
+      if (item.dataset.roomId === currentRoom) {
+        item.classList.add('active');
+      }
+    });
+  }
+  
+  // Обновление списка комнат
+  function updateRoomsList(roomsData) {
+    roomsList.innerHTML = '';
+    rooms = roomsData;
+    
+    roomsData.forEach(room => {
+      const roomItem = document.createElement('div');
+      roomItem.className = 'room-item';
+      roomItem.dataset.roomId = room.id;
+      roomItem.textContent = room.name;
+      
+      if (room.id === currentRoom) {
+        roomItem.classList.add('active');
+      }
+      
+      roomItem.addEventListener('click', () => {
+        handleRoomClick(room.id, room.name);
+      });
+      
+      roomsList.appendChild(roomItem);
+    });
   }
   
   // Отображение сообщения в чате
   function displayMessage(message) {
+    // Если сообщение не для текущей комнаты, игнорируем
+    if (message.roomId && message.roomId !== currentRoom) {
+      return;
+    }
+    
+    // Если это сообщение из другой комнаты и не от нас, проигрываем уведомление
+    if (message.roomId !== currentRoom && (!currentUser || message.username !== currentUser.username)) {
+      playNotificationSound();
+    }
+    
     // Создаем элемент сообщения
     const messageElement = document.createElement('div');
     
@@ -201,6 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Проверяем, является ли сообщение собственным
     if (currentUser && message.username === currentUser.username) {
       messageElement.classList.add('own');
+    } else if (!isWindowActive) {
+      // Проигрываем звук уведомления для чужих сообщений при неактивном окне
+      playNotificationSound();
     }
     
     // Создаем пузырь сообщения
@@ -223,16 +406,37 @@ document.addEventListener('DOMContentLoaded', () => {
     metaElement.appendChild(timestampElement);
     
     // Текст сообщения
-    const textElement = document.createElement('div');
-    textElement.className = 'message-text';
-    textElement.textContent = message.text;
+    if (message.text) {
+      const textElement = document.createElement('div');
+      textElement.className = 'message-text';
+      textElement.textContent = message.text;
+      messageBubble.appendChild(metaElement);
+      messageBubble.appendChild(textElement);
+    }
     
-    // Собираем сообщение
-    messageBubble.appendChild(metaElement);
-    messageBubble.appendChild(textElement);
+    // Если есть изображение
+    if (message.image) {
+      const imageElement = document.createElement('div');
+      imageElement.className = 'message-image';
+      
+      const img = document.createElement('img');
+      img.src = message.image;
+      img.alt = 'Изображение';
+      img.addEventListener('click', () => {
+        window.open(message.image, '_blank');
+      });
+      
+      imageElement.appendChild(img);
+      
+      if (!message.text) {
+        messageBubble.appendChild(metaElement);
+      }
+      
+      messageBubble.appendChild(imageElement);
+    }
+    
+    // Добавляем сообщение в DOM
     messageElement.appendChild(messageBubble);
-    
-    // Добавляем в контейнер
     messagesContainer.appendChild(messageElement);
     
     // Прокручиваем вниз
@@ -284,6 +488,9 @@ document.addEventListener('DOMContentLoaded', () => {
       authContainer.style.display = 'none';
       chatContainer.style.display = 'flex';
       
+      // Присоединяемся к общей комнате
+      socket.emit('join_room', 'general');
+      
       // Фокусируемся на поле ввода сообщения
       messageInput.focus();
       
@@ -293,13 +500,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Получение истории сообщений
-  socket.on('message_history', (messages) => {
-    messagesContainer.innerHTML = '';
-    messages.forEach(message => {
-      displayMessage(message);
-    });
-    scrollToBottom();
+  // Получение списка комнат
+  socket.on('room_list', (roomsData) => {
+    updateRoomsList(roomsData);
+  });
+  
+  // Подтверждение создания комнаты
+  socket.on('room_created', (response) => {
+    if (response.success) {
+      // Обновляем текущую комнату
+      currentRoom = response.room.id;
+      currentRoomName.textContent = response.room.name;
+      
+      // Обновляем список комнат (он придет от сервера)
+    }
+  });
+  
+  // Получение истории сообщений комнаты
+  socket.on('room_messages', (data) => {
+    if (data.roomId === currentRoom) {
+      messagesContainer.innerHTML = '';
+      data.messages.forEach(message => {
+        displayMessage(message);
+      });
+      scrollToBottom();
+    }
   });
   
   // Получение нового сообщения
@@ -316,4 +541,9 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('error', (data) => {
     alert('Ошибка: ' + data.message);
   });
+  
+  // Запрос разрешения на уведомления (для браузерных уведомлений)
+  if (Notification && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
 }); 
