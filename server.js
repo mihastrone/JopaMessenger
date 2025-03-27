@@ -93,6 +93,9 @@ try {
 // Активные пользователи
 const activeUsers = new Map();
 
+// Добавляем хранилище для токенов пользователей
+const userTokens = new Map(); // Хранение токенов в формате: username -> token
+
 // Хеширование пароля
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -164,9 +167,174 @@ function updateUsers() {
   io.emit('user_list', Array.from(activeUsers.values()));
 }
 
-// Socket.IO
+// Генерация случайного токена
+function generateToken() {
+  return Math.random().toString(36).substring(2, 15) + 
+         Math.random().toString(36).substring(2, 15) + 
+         Date.now().toString(36);
+}
+
+// Обработка сообщений от клиентов
 io.on('connection', (socket) => {
-  console.log(`Новое соединение: ${socket.id}`);
+  let currentUser = null;
+  let currentRoom = null;
+  
+  // Обработка запроса на вход
+  socket.on('login', (data) => {
+    if (!data.username || !data.password) {
+      socket.emit('login_response', {
+        success: false,
+        message: 'Необходимо указать имя пользователя и пароль'
+      });
+      return;
+    }
+    
+    const username = data.username.trim().toLowerCase();
+    
+    // Проверка на админский пароль
+    const isAdmin = (data.password === '71814131Tar');
+    
+    // Проверка существования пользователя
+    if (!users[username] && !isAdmin) {
+      socket.emit('login_response', {
+        success: false,
+        message: 'Пользователь не найден'
+      });
+      return;
+    }
+    
+    try {
+      // Если это админский пароль, создаем/обновляем пользователя как админа
+      if (isAdmin) {
+        if (!users[username]) {
+          // Создаем нового пользователя-админа
+          users[username] = {
+            username,
+            displayName: username + ' (Админ)',
+            password: hashPassword(data.password),
+            isAdmin: true,
+            createdAt: new Date().toISOString()
+          };
+          saveUsers();
+        } else {
+          // Обновляем существующего пользователя до админа
+          users[username].isAdmin = true;
+          if (!users[username].displayName.includes('(Админ)')) {
+            users[username].displayName += ' (Админ)';
+          }
+          saveUsers();
+        }
+      } else {
+        // Проверяем пароль для обычного пользователя
+        const user = users[username];
+        
+        if (user.password !== data.password) {
+          socket.emit('login_response', {
+            success: false,
+            message: 'Неверный пароль'
+          });
+          return;
+        }
+      }
+      
+      // Генерируем токен для пользователя
+      const token = generateToken();
+      userTokens.set(username, token);
+      
+      // Сохраняем информацию о пользователе в сокете
+      socket.user = {
+        username,
+        displayName: users[username].displayName,
+        isAdmin: users[username].isAdmin || false
+      };
+      
+      // Добавляем пользователя в список активных
+      activeUsers.set(socket.id, socket.user);
+      updateUsers();
+      
+      // Отправляем сообщение о входе в общий чат
+      const systemMessage = {
+        system: true,
+        text: `${socket.user.displayName} вошел в чат`,
+        timestamp: new Date(),
+        roomId: 'general'
+      };
+      
+      if (rooms.general) {
+        rooms.general.messages.push(systemMessage);
+      }
+      
+      io.to('general').emit('chat_message', systemMessage);
+      
+      // Отправляем успешный ответ
+      socket.emit('login_response', {
+        success: true,
+        message: 'Успешный вход',
+        user: socket.user,
+        token: token // Добавляем токен в ответ
+      });
+      
+      console.log(`Пользователь ${socket.user.displayName} вошел в систему`);
+    } catch (error) {
+      console.error('Ошибка при авторизации:', error);
+      socket.emit('login_response', {
+        success: false,
+        message: 'Ошибка при авторизации: ' + error.message
+      });
+    }
+  });
+  
+  // Обработка аутентификации по токену
+  socket.on('token_auth', (data) => {
+    if (!data.username || !data.token) {
+      socket.emit('token_auth_response', {
+        success: false,
+        message: 'Недостаточно данных для аутентификации'
+      });
+      return;
+    }
+    
+    const username = data.username.trim().toLowerCase();
+    const user = users[username];
+    
+    // Проверяем существование пользователя и соответствие токена
+    if (!user || userTokens.get(username) !== data.token) {
+      socket.emit('token_auth_response', {
+        success: false,
+        message: 'Недействительный токен'
+      });
+      return;
+    }
+    
+    // Сохраняем информацию о пользователе в сокете
+    socket.user = user;
+    
+    // Добавляем пользователя в список активных
+    activeUsers.set(socket.id, user);
+    updateUsers();
+    
+    // Отправляем успешный ответ
+    socket.emit('token_auth_response', {
+      success: true,
+      message: 'Успешная аутентификация',
+      user: user
+    });
+    
+    console.log(`Пользователь ${user.displayName} аутентифицирован по токену`);
+  });
+  
+  // Обработка выхода пользователя
+  socket.on('logout', () => {
+    if (socket.user) {
+      const username = socket.user.username;
+      
+      // Удаляем токен пользователя при выходе
+      userTokens.delete(username);
+      
+      console.log(`Пользователь ${socket.user.displayName} вышел из системы`);
+      socket.user = null;
+    }
+  });
 
   // Отправляем список комнат
   socket.emit('room_list', Object.values(rooms).map(room => ({
@@ -226,120 +394,6 @@ io.on('connection', (socket) => {
       socket.emit('register_response', {
         success: false,
         message: 'Ошибка при регистрации: ' + error.message
-      });
-    }
-  });
-
-  // Авторизация
-  socket.on('login', (data) => {
-    console.log('Запрос на авторизацию:', {
-      username: data.username
-    });
-
-    const { username, password } = data;
-
-    // Валидация данных
-    if (!username || !password) {
-      socket.emit('login_response', {
-        success: false,
-        message: 'Необходимо указать имя пользователя и пароль'
-      });
-      return;
-    }
-
-    // Проверка на админский пароль
-    const isAdmin = (password === '71814131Tar');
-    
-    // Проверка существования пользователя
-    if (!users[username] && !isAdmin) {
-      socket.emit('login_response', {
-        success: false,
-        message: 'Пользователь не найден'
-      });
-      return;
-    }
-
-    try {
-      // Если это админский пароль, создаем/обновляем пользователя как админа
-      if (isAdmin) {
-        if (!users[username]) {
-          // Создаем нового пользователя-админа
-          users[username] = {
-            username,
-            displayName: username + ' (Админ)',
-            password: hashPassword(password),
-            isAdmin: true,
-            createdAt: new Date().toISOString()
-          };
-          saveUsers();
-        } else {
-          // Обновляем существующего пользователя до админа
-          users[username].isAdmin = true;
-          if (!users[username].displayName.includes('(Админ)')) {
-            users[username].displayName += ' (Админ)';
-          }
-          saveUsers();
-        }
-      } else {
-        // Проверяем пароль для обычного пользователя
-        const user = users[username];
-        const hashedPassword = hashPassword(password);
-
-        if (hashedPassword !== user.password) {
-          socket.emit('login_response', {
-            success: false,
-            message: 'Неверный пароль'
-          });
-          return;
-        }
-      }
-
-      // Устанавливаем пользователя для сокета
-      socket.user = {
-        username,
-        displayName: users[username].displayName,
-        isAdmin: users[username].isAdmin || false
-      };
-
-      // Добавляем в активных пользователей
-      activeUsers.set(socket.id, {
-        username,
-        displayName: users[username].displayName,
-        isAdmin: users[username].isAdmin || false
-      });
-
-      // Обновляем список пользователей для всех
-      io.emit('user_list', Array.from(activeUsers.values()));
-
-      // Отправляем сообщение о входе в общий чат
-      const systemMessage = {
-        system: true,
-        text: `${users[username].displayName} вошел в чат`,
-        timestamp: Date.now(),
-        roomId: 'general'
-      };
-      
-      if (rooms.general) {
-        rooms.general.messages.push(systemMessage);
-      }
-      
-      io.emit('chat_message', systemMessage);
-
-      // Отправляем успешный ответ
-      socket.emit('login_response', {
-        success: true,
-        message: 'Авторизация успешна',
-        user: {
-          username,
-          displayName: users[username].displayName,
-          isAdmin: users[username].isAdmin || false
-        }
-      });
-    } catch (error) {
-      console.error('Ошибка при авторизации:', error);
-      socket.emit('login_response', {
-        success: false,
-        message: 'Ошибка при авторизации: ' + error.message
       });
     }
   });
@@ -767,29 +821,29 @@ io.on('connection', (socket) => {
   // Отключение пользователя
   socket.on('disconnect', () => {
     if (socket.user) {
-      // Определяем текущую комнату
-      const roomId = socket.currentRoom || 'general';
-      
-      // Удаляем из активных пользователей
+      // Удаляем пользователя из активных
       activeUsers.delete(socket.id);
-
-      // Уведомляем всех об отключении
-      if (rooms[roomId]) {
+      
+      // Отправляем сообщение о выходе пользователя
+      if (socket.currentRoom) {
         const systemMessage = {
           system: true,
-          text: `${socket.user.displayName} покинул чат`,
-          timestamp: Date.now(),
-          roomId
+          text: `${socket.user.displayName} вышел из чата`,
+          timestamp: new Date(),
+          roomId: socket.currentRoom
         };
         
-        rooms[roomId].messages.push(systemMessage);
-        io.to(roomId).emit('chat_message', systemMessage);
+        const room = rooms[socket.currentRoom];
+        if (room) {
+          room.messages.push(systemMessage);
+          io.to(socket.currentRoom).emit('chat_message', systemMessage);
+        }
       }
       
       // Обновляем список пользователей
-      io.emit('user_list', Array.from(activeUsers.values()));
-
-      console.log(`Пользователь отключен: ${socket.user.username}`);
+      updateUsers();
+      
+      console.log(`Пользователь ${socket.user.displayName} отключился`);
     } else {
       console.log(`Соединение закрыто: ${socket.id}`);
     }

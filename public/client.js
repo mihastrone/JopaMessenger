@@ -325,8 +325,8 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Выход
   logoutButton.addEventListener('click', () => {
-    localStorage.removeItem('username');
-    localStorage.removeItem('token');
+    localStorage.removeItem('chatUsername');
+    localStorage.removeItem('chatToken');
     currentUser = null;
     showAuthScreen();
   });
@@ -882,7 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Модифицированная функция отображения сообщения, теперь возвращает созданный элемент и включает логирование
+  // Модифицированная функция отображения сообщения для автоматического скрытия системных сообщений
   function displayMessage(message) {
     console.log('Отображение сообщения:', message);
     
@@ -916,6 +916,23 @@ document.addEventListener('DOMContentLoaded', () => {
     messagesContainer.appendChild(messageElement);
     scrollToBottom();
     
+    // Автоматическое скрытие системных сообщений через 10 секунд
+    if (message.system || message.isSystem) {
+      setTimeout(() => {
+        if (messageElement.parentNode) {
+          // Добавляем класс анимации удаления
+          messageElement.classList.add('deleting');
+          
+          // После завершения анимации удаляем элемент
+          messageElement.addEventListener('animationend', () => {
+            if (messageElement.parentNode) {
+              messageElement.parentNode.removeChild(messageElement);
+            }
+          }, { once: true });
+        }
+      }, 10000); // 10 секунд
+    }
+    
     return messageElement;
   }
   
@@ -935,11 +952,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Обработчик успешного входа
+  // Обработчик успешного входа - модифицируем для сохранения данных
   socket.on('login_response', (response) => {
     if (response.success) {
       // Сохраняем данные пользователя
       currentUser = response.user;
+      
+      // Сохраняем токен и имя пользователя в localStorage
+      if (response.token) {
+        localStorage.setItem('chatUsername', currentUser.username);
+        localStorage.setItem('chatToken', response.token);
+        console.log('Данные пользователя сохранены');
+      }
       
       // Обновляем интерфейс
       userDisplayName.textContent = currentUser.displayName || currentUser.username;
@@ -959,7 +983,42 @@ document.addEventListener('DOMContentLoaded', () => {
       
       showMessage(loginMessage, response.message, 'success');
     } else {
+      // Если вход не удался, удаляем сохраненные данные
+      localStorage.removeItem('chatUsername');
+      localStorage.removeItem('chatToken');
+      
       showMessage(loginMessage, response.message, 'error');
+    }
+  });
+  
+  // Новый обработчик для аутентификации по токену
+  socket.on('token_auth_response', (response) => {
+    if (response.success) {
+      // Сохраняем данные пользователя
+      currentUser = response.user;
+      
+      // Обновляем интерфейс
+      userDisplayName.textContent = currentUser.displayName || currentUser.username;
+      
+      // Скрываем форму авторизации и показываем чат
+      authContainer.style.display = 'none';
+      chatContainer.style.display = 'flex';
+      
+      // Присоединяемся к общей комнате
+      socket.emit('join_room', 'general');
+      
+      // Применяем тему
+      applyTheme();
+      
+      console.log('Успешная авторизация по токену');
+    } else {
+      // Если аутентификация не удалась, удаляем сохраненные данные
+      localStorage.removeItem('chatUsername');
+      localStorage.removeItem('chatToken');
+      console.log('Ошибка авторизации по токену, данные удалены');
+      
+      // Показываем экран авторизации
+      showAuthScreen();
     }
   });
   
@@ -1385,4 +1444,22 @@ document.addEventListener('DOMContentLoaded', () => {
     console.error('Ошибка сервера:', error);
     showMessage(document.getElementById('login-message'), error.message, 'error');
   });
+
+  // Добавляем функцию автоматического входа при загрузке страницы
+  function checkSavedLogin() {
+    const savedUsername = localStorage.getItem('chatUsername');
+    const savedToken = localStorage.getItem('chatToken');
+    
+    if (savedUsername && savedToken) {
+      // Отправляем запрос на аутентификацию по токену
+      socket.emit('token_auth', {
+        username: savedUsername,
+        token: savedToken
+      });
+      console.log('Попытка авторизации по сохраненному токену');
+    }
+  }
+  
+  // Проверяем сохраненные данные при загрузке
+  checkSavedLogin();
 }); 
