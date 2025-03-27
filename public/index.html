@@ -1,216 +1,94 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Jopa Messenger | Чат с авторизацией и комнатами</title>
-    
-    <!-- Мета-теги для Railway хостинга -->
-    <meta name="description" content="Современный мессенджер с авторизацией и приватными комнатами">
-    <meta name="theme-color" content="#4a76a8">
-    <meta name="robots" content="index, follow">
-    
-    <!-- Предзагрузка ключевых ресурсов -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="dns-prefetch" href="https://fonts.googleapis.com">
-    
-    <!-- Оптимизированная загрузка стилей -->
-    <link rel="stylesheet" href="styles.css">
-    
-    <!-- Отложенная загрузка скриптов -->
-    <script src="/socket.io/socket.io.js" defer></script>
-    <script src="client.js" defer></script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
-    <!-- Заглушка для Socket.IO, если не загрузится через CDN -->
-    <script>
-        // Предотвращение ошибок до загрузки socket.io
-        if (typeof io === 'undefined') {
-            window.io = function() {
-                console.error('Socket.IO не загружен. Перезагрузите страницу.');
-                return {
-                    on: function() {},
-                    emit: function() {},
-                    connect: function() {}
-                };
-            };
-        }
-    </script>
-    <!-- Добавляем скрипт для очистки кэша при загрузке -->
-    <script>
-        // Версия приложения для контроля кэша
-        window.APP_VERSION = '1.0.' + Date.now();
-        
-        // Очистка кэша при загрузке
-        if (localStorage.getItem('cache_cleared_at') !== window.APP_VERSION) {
-            console.log('Очищаем кэш приложения...');
-            
-            // Очищаем кэш сообщений и настроек
-            localStorage.removeItem('cached_messages');
-            localStorage.removeItem('chat_rooms');
-            
-            // Запоминаем, что кэш очищен для этой версии
-            localStorage.setItem('cache_cleared_at', window.APP_VERSION);
-        }
-        
-        // Предотвращение кэширования
-        document.head.innerHTML += '<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">';
-        document.head.innerHTML += '<meta http-equiv="Pragma" content="no-cache">';
-        document.head.innerHTML += '<meta http-equiv="Expires" content="0">';
-    </script>
-    
-    <script>
-        // Глобальный обработчик ошибок
-        window.onerror = function(message, source, lineno, colno, error) {
-            console.error('Глобальная ошибка:', message, 'Источник:', source, 'Строка:', lineno, 'Колонка:', colno, 'Объект ошибки:', error);
-            return false;
-        };
-        
-        // Создаем глобальный объект для хранения состояния
-        window.JopaApp = {
-            socket: null,
-            username: '',
-            displayName: '',
-            currentRoom: 'general',
-            isLoggedIn: false,
-            rooms: new Map(),
-            debug: true // Включаем режим отладки
-        };
-    </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Простой чат</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app">
-        <div class="login-screen" id="login-screen">
-            <h1>Jopa Messenger</h1>
-            <p class="subtitle">Лёгкий онлайн-чат</p>
-            
-            <div class="auth-tabs">
-                <button class="auth-tab-btn active" data-tab="login">Вход</button>
-                <button class="auth-tab-btn" data-tab="register">Регистрация</button>
-            </div>
-            
-            <div class="login-form" id="login-form">
-                <div class="auth-form" id="login-tab">
-                    <input type="text" id="login-username" placeholder="Логин" maxlength="20">
-                    <input type="password" id="login-password" placeholder="Пароль">
-                    <div class="remember-me">
-                        <label>
-                            <input type="checkbox" id="remember-me">
-                            <span>Запомнить меня</span>
-                        </label>
-                    </div>
-                    <div id="login-message" class="message-box" style="display: none;"></div>
-                    <button id="login-button">Войти в чат</button>
-                </div>
-                
-                <div class="auth-form" id="register-tab" style="display: none;">
-                    <h2>Регистрация</h2>
-                    <div class="alert alert-info">
-                        <strong>Временный режим!</strong> Сервер работает в упрощенном режиме регистрации.
-                    </div>
-                    <input type="text" id="register-username" placeholder="Логин" maxlength="20">
-                    <input type="text" id="register-display-name" placeholder="Отображаемое имя" maxlength="20">
-                    <input type="password" id="register-password" placeholder="Пароль">
-                    <input type="password" id="register-password-confirm" placeholder="Подтвердите пароль">
-                    <div class="form-group">
-                        <label class="checkbox-container">
-                            Упрощенный режим (без сохранения файлов)
-                            <input type="checkbox" id="simple-mode" name="simple-mode">
-                            <span class="checkmark"></span>
-                        </label>
-                    </div>
-                    <div id="register-message" class="message-box" style="display: none;"></div>
-                    <button id="register-button">Зарегистрироваться</button>
-                </div>
-                
-                <div class="connection-status" id="connection-status"></div>
-            </div>
+  <!-- Форма авторизации -->
+  <div id="auth-container">
+    <div class="auth-box">
+      <h1>Простой чат</h1>
+      
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="login">Вход</button>
+        <button class="tab-btn" data-tab="register">Регистрация</button>
+      </div>
+      
+      <!-- Форма входа -->
+      <div class="tab-content active" id="login-tab">
+        <h2>Вход в чат</h2>
+        <div class="form-group">
+          <label for="login-username">Имя пользователя:</label>
+          <input type="text" id="login-username" placeholder="Введите имя пользователя">
         </div>
-        
-        <div class="chat-screen" id="chat-screen" style="display: none;">
-            <div class="chat-header">
-                <h2>Jopa Messenger</h2>
-                <div class="server-info">
-                    <div id="server-info">
-                        Подключено к: <span id="connected-server">облачному серверу</span>
-                    </div>
-                    <div id="status-indicator" class="status-indicator online"></div>
-                </div>
-                <div class="admin-button-container">
-                    <button id="admin-panel-button" class="admin-panel-button" title="Панель администратора">
-                        <i class="fas fa-cog"></i> Админ
-                    </button>
-                </div>
-            </div>
-            
-            <div class="chat-container">
-                <div class="sidebar">
-                    <div class="online-users">
-                        <h3>Онлайн (<span id="user-count">0</span>)</h3>
-                        <ul id="user-list"></ul>
-                    </div>
-                    
-                    <div class="private-rooms">
-                        <h3>Приватные комнаты</h3>
-                        <button id="create-room-button" class="create-room-btn">Создать комнату</button>
-                        <ul id="rooms-list"></ul>
-                    </div>
-                    
-                    <div class="settings-panel">
-                        <h3>Настройки</h3>
-                        <div class="current-user-info">
-                            <div class="user-name" id="current-user-name"></div>
-                        </div>
-                        <div class="setting-item">
-                            <label for="theme-select">Тема:</label>
-                            <select id="theme-select">
-                                <option value="light">Светлая</option>
-                                <option value="dark">Тёмная</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="chat-main">
-                    <div class="messages-container" id="messages-container"></div>
-                    
-                    <div class="message-input-container">
-                        <div class="image-preview-container" id="image-preview-container">
-                            <img id="image-preview" class="image-preview">
-                            <button class="remove-image" id="remove-image">×</button>
-                        </div>
-                        <textarea id="message-input" placeholder="Введите сообщение..."></textarea>
-                        <label for="image-upload" class="image-upload-label" title="Прикрепить изображение">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM19 19H5V5H19V19ZM14.14 11.86L11.14 15.73L9 13.14L6 17H18L14.14 11.86Z" fill="#4a90e2"/>
-                            </svg>
-                            <input type="file" id="image-upload" accept="image/*" style="display: none;">
-                        </label>
-                        <button id="send-button">Отправить</button>
-                    </div>
-                </div>
-            </div>
+        <div class="form-group">
+          <label for="login-password">Пароль:</label>
+          <input type="password" id="login-password" placeholder="Введите пароль">
         </div>
-        
-        <div class="footer">
-            <p>&copy; 2023 Jopa Messenger</p>
+        <div class="form-group">
+          <button id="login-btn">Войти</button>
         </div>
+        <div id="login-message" class="message-box"></div>
+      </div>
+      
+      <!-- Форма регистрации -->
+      <div class="tab-content" id="register-tab">
+        <h2>Регистрация</h2>
+        <div class="form-group">
+          <label for="register-username">Имя пользователя:</label>
+          <input type="text" id="register-username" placeholder="Введите имя пользователя">
+        </div>
+        <div class="form-group">
+          <label for="register-display-name">Отображаемое имя:</label>
+          <input type="text" id="register-display-name" placeholder="Введите отображаемое имя">
+        </div>
+        <div class="form-group">
+          <label for="register-password">Пароль:</label>
+          <input type="password" id="register-password" placeholder="Введите пароль">
+        </div>
+        <div class="form-group">
+          <label for="register-password-confirm">Подтверждение пароля:</label>
+          <input type="password" id="register-password-confirm" placeholder="Повторите пароль">
+        </div>
+        <div class="form-group">
+          <button id="register-btn">Зарегистрироваться</button>
+        </div>
+        <div id="register-message" class="message-box"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Контейнер чата -->
+  <div id="chat-container" style="display: none;">
+    <div class="chat-header">
+      <h2>Общий чат</h2>
+      <div class="user-info">
+        <span id="user-display-name"></span>
+        <button id="logout-btn">Выйти</button>
+      </div>
     </div>
     
-    <!-- Модальное окно для просмотра изображений -->
-    <div class="image-modal" id="image-modal">
-        <img id="modal-image" class="modal-image">
+    <div class="chat-main">
+      <div class="users-panel">
+        <h3>Пользователи онлайн</h3>
+        <div id="users-list"></div>
+      </div>
+      
+      <div class="messages-panel">
+        <div id="messages-container"></div>
+        
+        <div class="message-input-container">
+          <input type="text" id="message-input" placeholder="Введите сообщение...">
+          <button id="send-button">Отправить</button>
+        </div>
+      </div>
     </div>
-    
-    <script>
-        // Обнаружение проблем загрузки Socket.IO
-        window.addEventListener('load', function() {
-            if (typeof io === 'undefined') {
-                document.getElementById('connection-status').innerHTML = 
-                    '<span style="color:red">Ошибка загрузки Socket.IO. Перезагрузите страницу.</span>';
-            }
-        });
-    </script>
+  </div>
+  
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
 </body>
 </html> 
