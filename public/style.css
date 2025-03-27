@@ -410,6 +410,87 @@ button:hover {
 .user-item {
   padding: 0.5rem 0;
   border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+.user-item:hover {
+  background-color: rgba(232, 106, 48, 0.1);
+}
+
+.user-item.has-unread {
+  font-weight: bold;
+}
+
+.user-item .user-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #aaa;
+  margin-right: 8px;
+  display: inline-block;
+}
+
+.user-item .user-status.online {
+  background-color: #28a745;
+}
+
+.user-item .pm-button {
+  opacity: 0;
+  transition: opacity 0.2s;
+  background: transparent;
+  color: var(--primary-color);
+  border: none;
+  padding: 4px;
+  font-size: 0.9rem;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-item:hover .pm-button {
+  opacity: 0.8;
+}
+
+.user-item .pm-button:hover {
+  opacity: 1;
+  background-color: rgba(232, 106, 48, 0.2);
+}
+
+.private-chat {
+  background-color: rgba(232, 106, 48, 0.05);
+}
+
+.private-room-item {
+  background-color: rgba(232, 106, 48, 0.1);
+  position: relative;
+}
+
+.private-room-item::before {
+  content: '🔒';
+  position: absolute;
+  left: 5px;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.private-room-item .room-name {
+  margin-left: 18px;
+}
+
+.private-message-marker {
+  font-size: 0.7rem;
+  color: var(--primary-color);
+  margin-left: 5px;
+  vertical-align: middle;
 }
 
 /* Панель сообщений */
@@ -1186,4 +1267,55 @@ button:hover {
 /* Анимация при подсветке нового сообщения */
 .message.highlight {
   animation: pulseHighlight 1.5s ease-out forwards;
+}
+
+/* Оповещение о личном сообщении */
+.unread-badge {
+  background-color: var(--primary-color);
+  color: white;
+  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin-left: 5px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(232, 106, 48, 0.7);
+  }
+  
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(232, 106, 48, 0);
+  }
+  
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(232, 106, 48, 0);
+  }
+}
+
+.deleted-message {
+  font-style: italic;
+  color: #aaa;
+  text-decoration: line-through;
+}
+
+.private-chat .message-bubble {
+  background-color: rgba(232, 106, 48, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.private-chat.own .message-bubble {
+  background-color: rgba(232, 106, 48, 0.2);
+  border-right: 3px solid var(--primary-color);
+  border-left: none;
 } 

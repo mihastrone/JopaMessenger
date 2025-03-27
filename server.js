@@ -174,7 +174,17 @@ function generateToken() {
          Date.now().toString(36);
 }
 
-// Обработка сообщений от клиентов
+// После функции updateUsers() добавим функцию для поиска сокета пользователя по имени
+function findUserSocket(username) {
+  for (const [socketId, user] of activeUsers.entries()) {
+    if (user.username === username) {
+      return io.sockets.sockets.get(socketId);
+    }
+  }
+  return null;
+}
+
+// Добавляем обработку личных сообщений в обработчике подключения сокета
 io.on('connection', (socket) => {
   let currentUser = null;
   let currentRoom = null;
@@ -814,6 +824,78 @@ io.on('connection', (socket) => {
       
       // Сохраняем изменения
       saveRooms();
+    }
+  });
+
+  // Добавляем обработку личных сообщений в обработчике подключения сокета
+  socket.on('private_message', (data) => {
+    if (!socket.user) {
+      socket.emit('error', { message: 'Вы не авторизованы' });
+      return;
+    }
+    
+    const { text, image, recipient, chatId } = data;
+    
+    // Проверяем, что получатель указан
+    if (!recipient) {
+      socket.emit('error', { message: 'Получатель не указан' });
+      return;
+    }
+    
+    // Обрабатываем изображение, если оно есть
+    let imageUrl = null;
+    if (image) {
+      imageUrl = saveImage(image);
+    }
+    
+    // Создаем сообщение
+    const message = {
+      id: generateId(),
+      sender: socket.user.username,
+      senderDisplayName: socket.user.displayName,
+      recipient: recipient,
+      text: text,
+      image: imageUrl,
+      timestamp: new Date(),
+      isPrivate: true,
+      chatId: chatId
+    };
+    
+    console.log(`Приватное сообщение от ${socket.user.displayName} для ${recipient}`);
+    
+    // Находим сокет получателя
+    const recipientSocket = findUserSocket(recipient);
+    
+    // Отправляем сообщение получателю, если он онлайн
+    if (recipientSocket) {
+      recipientSocket.emit('private_message', message);
+    }
+    
+    // Отправляем подтверждение отправителю
+    socket.emit('private_message', message);
+  });
+
+  // Обработка создания приватного чата
+  socket.on('private_chat_created', (data) => {
+    if (!socket.user) {
+      socket.emit('error', { message: 'Вы не авторизованы' });
+      return;
+    }
+    
+    const { targetUser, chatId } = data;
+    
+    console.log(`Создан приватный чат между ${socket.user.username} и ${targetUser}`);
+    
+    // Находим сокет целевого пользователя
+    const targetSocket = findUserSocket(targetUser);
+    
+    // Если пользователь онлайн, уведомляем его о создании чата
+    if (targetSocket) {
+      targetSocket.emit('private_chat_notification', {
+        chatId: chatId,
+        initiator: socket.user.username,
+        initiatorDisplayName: socket.user.displayName
+      });
     }
   });
 

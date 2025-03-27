@@ -101,6 +101,10 @@ document.addEventListener('DOMContentLoaded', () => {
     highlights: ['pulseHighlight']
   };
   
+  // В начале файла, к переменным для данных пользователя и чата добавляем:
+  let privateChats = {}; // Объект для хранения личных переписок
+  let unreadMessages = {}; // Счетчик непрочитанных сообщений для каждого пользователя
+  
   // ======== Обработчики UI ========
   
   // Переключение между вкладками входа и регистрации
@@ -349,14 +353,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // Не отправляем пустые сообщения
     if (!text && !currentImageData) return;
     
+    // Проверяем, является ли текущая комната приватным чатом
+    const isPrivateChat = currentRoom.startsWith('private_');
+    
+    // Создаем объект сообщения
     const message = {
-      room: currentRoom,
       text: text,
       image: currentImageData
     };
     
-    // Отправляем сообщение на сервер
-    socket.emit('chat_message', message);
+    if (isPrivateChat) {
+      // Для приватного чата добавляем получателя
+      const targetUser = getTargetUserFromPrivateChatId(currentRoom);
+      if (targetUser) {
+        message.isPrivate = true;
+        message.recipient = targetUser;
+        message.chatId = currentRoom;
+        
+        // Отправляем приватное сообщение на сервер
+        socket.emit('private_message', message);
+        
+        // Добавляем в локальную историю
+        addMessageToPrivateChat(currentRoom, {
+          id: generateId(),
+          username: currentUser.username,
+          displayName: currentUser.displayName,
+          text: text,
+          image: currentImageData,
+          timestamp: new Date(),
+          isPrivate: true,
+          sender: currentUser.username,
+          recipient: targetUser
+        });
+      }
+    } else {
+      // Для обычной комнаты
+      message.room = currentRoom;
+      socket.emit('chat_message', message);
+    }
     
     // Воспроизводим звук отправки
     playMessageSendSound();
@@ -367,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   // Обработка клика по комнате
-  function handleRoomClick(roomId, roomName) {
+  function handleRoomClick(roomId, roomName, isPrivate = false) {
     if (currentRoom !== roomId) {
       currentRoom = roomId;
       
@@ -375,13 +409,34 @@ document.addEventListener('DOMContentLoaded', () => {
       const roomNameEl = document.getElementById('current-room-name');
       if (roomNameEl) {
         roomNameEl.textContent = roomName;
+        
+        // Добавляем маркер приватного чата, если нужно
+        if (isPrivate) {
+          if (!roomNameEl.querySelector('.private-message-marker')) {
+            const marker = document.createElement('span');
+            marker.className = 'private-message-marker';
+            marker.textContent = '(личное)';
+            roomNameEl.appendChild(marker);
+          }
+        } else {
+          // Удаляем маркер приватного чата, если он есть
+          const marker = roomNameEl.querySelector('.private-message-marker');
+          if (marker) {
+            marker.remove();
+          }
+        }
       }
       
       // Очищаем контейнер сообщений
       messagesContainer.innerHTML = '';
       
-      // Присоединяемся к комнате
-      socket.emit('join_room', roomId);
+      // Для приватных чатов загружаем сообщения из локального хранилища
+      if (isPrivate) {
+        displayPrivateChatHistory(roomId);
+      } else {
+        // Для обычных комнат присоединяемся через сокет
+        socket.emit('join_room', roomId);
+      }
       
       // Обновляем активную комнату в списке
       updateActiveRoom();
@@ -699,6 +754,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Создаем простую структуру, если шаблон недоступен
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message');
+        if (message.isPrivate) {
+          messageDiv.classList.add('private-chat');
+        }
         messageDiv.innerHTML = `
           <div class="message-bubble">
             <div class="message-meta">
@@ -724,8 +782,14 @@ document.addEventListener('DOMContentLoaded', () => {
       messageDiv.dataset.messageId = message.id || generateId();
       
       // Определение, собственное ли это сообщение
-      if (message.sender === currentUser?.username || message.username === currentUser?.username) {
+      const isSender = message.sender === currentUser?.username || message.username === currentUser?.username;
+      if (isSender) {
         messageDiv.classList.add('own');
+      }
+      
+      // Если это приватное сообщение, добавляем соответствующий класс
+      if (message.isPrivate) {
+        messageDiv.classList.add('private-chat');
       }
       
       // Применяем случайную анимацию входа для сообщения
@@ -743,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       // Заполняем данные сообщения
-      usernameSpan.textContent = message.displayName || message.sender || message.username || 'Пользователь';
+      usernameSpan.textContent = message.senderDisplayName || message.displayName || message.sender || message.username || 'Пользователь';
       timeSpan.textContent = message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
       messageText.textContent = message.text || '';
       
@@ -766,10 +830,25 @@ document.addEventListener('DOMContentLoaded', () => {
         
         deleteButton.addEventListener('click', () => {
           if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-            socket.emit('delete_message', {
-              messageId: message.id,
-              roomId: currentRoom
-            });
+            if (message.isPrivate) {
+              // Обработка удаления приватного сообщения
+              // Помечаем сообщение как удаленное в локальной истории
+              message.deleted = true;
+              message.text = 'Сообщение удалено';
+              
+              // Обновляем отображение
+              messageText.textContent = 'Сообщение удалено';
+              messageText.classList.add('deleted-message');
+              
+              // Удаляем кнопку удаления
+              deleteButton.remove();
+            } else {
+              // Обычное удаление сообщения в комнате
+              socket.emit('delete_message', {
+                messageId: message.id,
+                roomId: currentRoom
+              });
+            }
           }
         });
         
@@ -919,10 +998,19 @@ document.addEventListener('DOMContentLoaded', () => {
       return null;
     }
     
-    // Проверяем принадлежность сообщения текущей комнате
-    if (message.roomId && message.roomId !== currentRoom) {
+    // Проверяем принадлежность сообщения текущей комнате или приватному чату
+    if (message.roomId && message.roomId !== currentRoom && !message.isPrivate) {
       console.log(`Сообщение для другой комнаты: ${message.roomId}, текущая комната: ${currentRoom}`);
       return null;
+    }
+    
+    // Для приватных сообщений проверяем, соответствует ли оно текущему чату
+    if (message.isPrivate) {
+      const chatId = message.chatId || getPrivateChatId(message.sender, message.recipient);
+      if (chatId !== currentRoom) {
+        console.log(`Приватное сообщение для другого чата: ${chatId}, текущий чат: ${currentRoom}`);
+        return null;
+      }
     }
     
     // Если это сообщение из другой комнаты, проигрываем уведомление
@@ -1471,13 +1559,247 @@ document.addEventListener('DOMContentLoaded', () => {
   // Обновление списка пользователей
   function updateUsersList(users) {
     usersList.innerHTML = '';
+    
     users.forEach(user => {
+      // Пропускаем текущего пользователя
+      if (user.username === currentUser?.username) return;
+      
       const userItem = document.createElement('div');
       userItem.className = 'user-item';
-      userItem.textContent = user.displayName || user.username;
+      userItem.dataset.username = user.username;
+      
+      // Добавляем индикатор статуса
+      const userStatus = document.createElement('span');
+      userStatus.className = 'user-status online';
+      
+      // Создаем контейнер для имени и непрочитанных сообщений
+      const userNameContainer = document.createElement('div');
+      userNameContainer.className = 'user-name-container';
+      
+      // Имя пользователя
+      const userName = document.createElement('span');
+      userName.className = 'user-name';
+      userName.textContent = user.displayName || user.username;
+      userNameContainer.appendChild(userName);
+      
+      // Проверяем, есть ли непрочитанные сообщения
+      if (unreadMessages[user.username] && unreadMessages[user.username] > 0) {
+        userItem.classList.add('has-unread');
+        const unreadBadge = document.createElement('span');
+        unreadBadge.className = 'unread-badge';
+        unreadBadge.textContent = unreadMessages[user.username];
+        userNameContainer.appendChild(unreadBadge);
+      }
+      
+      // Добавляем кнопку для личных сообщений
+      const pmButton = document.createElement('button');
+      pmButton.className = 'pm-button';
+      pmButton.innerHTML = '<i class="fa fa-comment"></i>';
+      pmButton.title = 'Написать личное сообщение';
+      
+      // Обработчик нажатия на кнопку личных сообщений
+      pmButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startPrivateChat(user.username, user.displayName || user.username);
+      });
+      
+      // Обработчик нажатия на имя пользователя
+      userItem.addEventListener('click', () => {
+        startPrivateChat(user.username, user.displayName || user.username);
+      });
+      
+      // Собираем элемент пользователя
+      userItem.appendChild(userStatus);
+      userItem.appendChild(userNameContainer);
+      userItem.appendChild(pmButton);
+      
       usersList.appendChild(userItem);
     });
   }
+
+  // Функция для создания или переключения на личную переписку
+  function startPrivateChat(username, displayName) {
+    // Создаем идентификатор приватного чата
+    const chatId = getPrivateChatId(currentUser.username, username);
+    
+    // Проверяем, существует ли уже такая приватная комната в списке
+    let roomExists = false;
+    const roomItems = document.querySelectorAll('.room-item');
+    roomItems.forEach(room => {
+      if (room.dataset.roomId === chatId) {
+        roomExists = true;
+        // Симулируем клик по существующей комнате
+        room.click();
+      }
+    });
+    
+    // Если комнаты нет, создаем новую
+    if (!roomExists) {
+      // Создаем приватную комнату на клиенте
+      const roomName = `Чат с ${displayName}`;
+      
+      // Если объект для хранения личных сообщений не инициализирован для этого пользователя
+      if (!privateChats[chatId]) {
+        privateChats[chatId] = {
+          id: chatId,
+          name: roomName,
+          messages: [],
+          participants: [currentUser.username, username],
+          isPrivate: true
+        };
+      }
+      
+      // Добавляем комнату в отображаемый список
+      addPrivateRoomToList(chatId, roomName, username);
+      
+      // Автоматически переключаемся на приватный чат
+      handleRoomClick(chatId, roomName, true);
+      
+      // Сбрасываем счетчик непрочитанных сообщений для этого пользователя
+      unreadMessages[username] = 0;
+      updateUsersList(Array.from(activeUsers.values()));
+      
+      // Сообщаем серверу о создании приватного чата
+      socket.emit('private_chat_created', { 
+        targetUser: username,
+        chatId: chatId
+      });
+    }
+  }
+
+  // Функция для получения идентификатора приватного чата
+  function getPrivateChatId(user1, user2) {
+    // Сортируем имена пользователей, чтобы ID был одинаковым независимо от порядка
+    const sortedUsers = [user1, user2].sort();
+    return `private_${sortedUsers[0]}_${sortedUsers[1]}`;
+  }
+
+  // Функция для добавления приватной комнаты в список комнат
+  function addPrivateRoomToList(chatId, roomName, targetUsername) {
+    // Создаем элемент комнаты
+    const roomItem = document.createElement('div');
+    roomItem.className = 'room-item private-room-item';
+    roomItem.dataset.roomId = chatId;
+    roomItem.dataset.targetUser = targetUsername;
+    
+    // Создаем контейнер для имени комнаты
+    const roomNameSpan = document.createElement('span');
+    roomNameSpan.className = 'room-name';
+    roomNameSpan.textContent = roomName;
+    
+    roomItem.appendChild(roomNameSpan);
+    
+    // Обработчик клика по комнате
+    roomItem.addEventListener('click', () => {
+      handleRoomClick(chatId, roomName, true);
+      
+      // Сбрасываем счетчик непрочитанных сообщений
+      if (unreadMessages[targetUsername]) {
+        unreadMessages[targetUsername] = 0;
+        updateUsersList(Array.from(activeUsers.values()));
+      }
+    });
+    
+    // Добавляем комнату в список
+    roomsList.appendChild(roomItem);
+  }
+
+  // Функция для отображения истории приватного чата
+  function displayPrivateChatHistory(chatId) {
+    // Проверяем, есть ли история для данного чата
+    if (privateChats[chatId] && privateChats[chatId].messages) {
+      // Отображаем сообщения
+      privateChats[chatId].messages.forEach(message => {
+        displayMessage(message);
+      });
+      
+      // Прокручиваем к последнему сообщению
+      scrollToBottom();
+    }
+  }
+
+  // Функция для получения имени пользователя из ID приватного чата
+  function getTargetUserFromPrivateChatId(chatId) {
+    if (!chatId.startsWith('private_')) return null;
+    
+    const users = chatId.replace('private_', '').split('_');
+    
+    // Возвращаем имя пользователя, который не является текущим
+    return users[0] === currentUser.username ? users[1] : users[0];
+  }
+
+  // Функция для добавления сообщения в историю приватного чата
+  function addMessageToPrivateChat(chatId, message) {
+    // Инициализируем объект для чата, если его еще нет
+    if (!privateChats[chatId]) {
+      const targetUser = getTargetUserFromPrivateChatId(chatId);
+      const targetUserDisplayName = findUserDisplayName(targetUser);
+      
+      privateChats[chatId] = {
+        id: chatId,
+        name: `Чат с ${targetUserDisplayName}`,
+        messages: [],
+        participants: [currentUser.username, targetUser],
+        isPrivate: true
+      };
+    }
+    
+    // Добавляем сообщение в историю
+    privateChats[chatId].messages.push(message);
+    
+    // Отображаем сообщение, если мы находимся в нужном чате
+    if (currentRoom === chatId) {
+      displayMessage(message);
+      scrollToBottom();
+    }
+  }
+
+  // Функция для поиска отображаемого имени пользователя
+  function findUserDisplayName(username) {
+    const users = Array.from(activeUsers.values());
+    const user = users.find(u => u.username === username);
+    return user ? (user.displayName || user.username) : username;
+  }
+
+  // Добавляем обработчик для приватных сообщений
+  socket.on('private_message', (message) => {
+    console.log('Получено личное сообщение:', message);
+    
+    // Определяем ID чата
+    const chatId = message.chatId || getPrivateChatId(message.sender, message.recipient);
+    
+    // Добавляем сообщение в историю приватного чата
+    addMessageToPrivateChat(chatId, message);
+    
+    // Если сообщение от другого пользователя и мы не в этом чате, увеличиваем счетчик непрочитанных
+    if (message.sender !== currentUser.username && currentRoom !== chatId) {
+      if (!unreadMessages[message.sender]) {
+        unreadMessages[message.sender] = 0;
+      }
+      unreadMessages[message.sender]++;
+      
+      // Обновляем список пользователей для отображения непрочитанных сообщений
+      updateUsersList(Array.from(activeUsers.values()));
+      
+      // Проверяем, существует ли комната для этого чата в списке
+      let roomExists = false;
+      const roomItems = document.querySelectorAll('.room-item');
+      roomItems.forEach(room => {
+        if (room.dataset.roomId === chatId) {
+          roomExists = true;
+        }
+      });
+      
+      // Если комнаты нет, создаем её
+      if (!roomExists) {
+        const senderDisplayName = findUserDisplayName(message.sender);
+        addPrivateRoomToList(chatId, `Чат с ${senderDisplayName}`, message.sender);
+      }
+      
+      // Воспроизводим звук уведомления
+      playNotificationSound();
+    }
+  });
 
   // Обработчики Socket.IO
   socket.on('connect', () => {
@@ -1510,4 +1832,45 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Проверяем сохраненные данные при загрузке
   checkSavedLogin();
+
+  // Добавляем обработчик уведомления о создании приватного чата
+  socket.on('private_chat_notification', (data) => {
+    console.log('Получено уведомление о создании приватного чата:', data);
+    
+    const { chatId, initiator, initiatorDisplayName } = data;
+    
+    // Проверяем, существует ли уже такой чат
+    if (!privateChats[chatId]) {
+      privateChats[chatId] = {
+        id: chatId,
+        name: `Чат с ${initiatorDisplayName || initiator}`,
+        messages: [],
+        participants: [currentUser.username, initiator],
+        isPrivate: true
+      };
+      
+      // Добавляем комнату в список
+      addPrivateRoomToList(chatId, `Чат с ${initiatorDisplayName || initiator}`, initiator);
+      
+      // Отображаем уведомление
+      const systemMessage = {
+        system: true,
+        text: `${initiatorDisplayName || initiator} начал(а) с вами приватный чат`,
+        timestamp: new Date(),
+        isSystem: true
+      };
+      
+      // Увеличиваем счетчик непрочитанных сообщений
+      if (!unreadMessages[initiator]) {
+        unreadMessages[initiator] = 0;
+      }
+      unreadMessages[initiator]++;
+      
+      // Обновляем список пользователей для отображения непрочитанных сообщений
+      updateUsersList(Array.from(activeUsers.values()));
+      
+      // Воспроизводим звук уведомления
+      playNotificationSound();
+    }
+  });
 }); 
