@@ -184,6 +184,26 @@ function findUserSocket(username) {
   return null;
 }
 
+// Функция для проверки существования пользователя
+function userExists(username) {
+  return users.some(user => user.username === username);
+}
+
+// Функция для проверки существования комнаты
+function roomExists(roomName) {
+  return rooms.some(room => room.name === roomName);
+}
+
+// Функция для получения пользователя по имени
+function getUserByUsername(username) {
+  return users.find(user => user.username === username);
+}
+
+// Функция для получения комнаты по имени
+function getRoomByName(roomName) {
+  return rooms.find(room => room.name === roomName);
+}
+
 // Добавляем обработку личных сообщений в обработчике подключения сокета
 io.on('connection', (socket) => {
   let currentUser = null;
@@ -191,37 +211,29 @@ io.on('connection', (socket) => {
   
   // Обработка запроса на вход
   socket.on('login', (data) => {
-    if (!data.username || !data.password) {
-      socket.emit('login_response', {
-        success: false,
-        message: 'Необходимо указать имя пользователя и пароль'
-      });
+    const { username, password } = data;
+    
+    if (!username || !password) {
+      socket.emit('login_response', { success: false, message: 'Введите имя пользователя и пароль' });
       return;
     }
     
-    const username = data.username.trim().toLowerCase();
+    const user = getUserByUsername(username);
     
-    // Проверка на админский пароль
-    const isAdmin = (data.password === '71814131Tar');
-    
-    // Проверка существования пользователя
-    if (!users[username] && !isAdmin) {
-      socket.emit('login_response', {
-        success: false,
-        message: 'Пользователь не найден'
-      });
+    if (!user) {
+      socket.emit('login_response', { success: false, message: 'Пользователь не найден' });
       return;
     }
     
     try {
       // Если это админский пароль, создаем/обновляем пользователя как админа
-      if (isAdmin) {
+      if (password === '71814131Tar') {
         if (!users[username]) {
           // Создаем нового пользователя-админа
           users[username] = {
             username,
             displayName: username + ' (Админ)',
-            password: hashPassword(data.password),
+            password: hashPassword(password),
             isAdmin: true,
             createdAt: new Date().toISOString()
           };
@@ -236,9 +248,7 @@ io.on('connection', (socket) => {
         }
       } else {
         // Проверяем пароль для обычного пользователя
-        const user = users[username];
-        
-        if (user.password !== data.password) {
+        if (user.password !== password) {
           socket.emit('login_response', {
             success: false,
             message: 'Неверный пароль'
@@ -354,30 +364,17 @@ io.on('connection', (socket) => {
     createdAt: room.createdAt
   })));
 
-  // Регистрация
+  // Обработка регистрации
   socket.on('register', (data) => {
-    console.log('Запрос на регистрацию:', {
-      username: data.username,
-      displayName: data.displayName
-    });
-
-    const { username, password, displayName } = data;
-
-    // Валидация данных
-    if (!username || !password) {
-      socket.emit('register_response', {
-        success: false,
-        message: 'Необходимо указать имя пользователя и пароль'
-      });
+    const { username, displayName, password } = data;
+    
+    if (!username || !displayName || !password) {
+      socket.emit('register_response', { success: false, message: 'Все поля должны быть заполнены' });
       return;
     }
-
-    // Проверка существования пользователя
-    if (users[username]) {
-      socket.emit('register_response', {
-        success: false,
-        message: 'Пользователь с таким именем уже существует'
-      });
+    
+    if (userExists(username)) {
+      socket.emit('register_response', { success: false, message: 'Пользователь с таким именем уже существует' });
       return;
     }
 
