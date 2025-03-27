@@ -811,15 +811,17 @@ button:hover {
   }
   
   .message-input-container {
-    position: absolute;
+    position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     padding: 6px;
-    z-index: 100;
+    z-index: 1000;
     background-color: var(--background-color);
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
     height: 50px;
+    display: flex !important;
+    flex-direction: row !important;
   }
   
   .input-actions {

@@ -115,6 +115,15 @@ document.addEventListener('DOMContentLoaded', () => {
     createRoomModal.classList.add('active');
     roomNameInput.value = '';
     roomNameInput.focus();
+    
+    // Исправляем видимость поля ввода
+    if (window.innerWidth <= 768) {
+      const messageInputContainer = document.querySelector('.message-input-container');
+      if (messageInputContainer) {
+        messageInputContainer.style.display = 'flex';
+        messageInputContainer.style.bottom = '0';
+      }
+    }
   });
   
   // Закрытие модального окна
@@ -362,6 +371,17 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Обновляем активную комнату в списке
       updateActiveRoom();
+      
+      // Исправляем видимость поля ввода на мобильных устройствах
+      if (window.innerWidth <= 768) {
+        const messageInputContainer = document.querySelector('.message-input-container');
+        if (messageInputContainer) {
+          setTimeout(() => {
+            messageInputContainer.style.display = 'flex';
+            messageInputContainer.style.bottom = '0';
+          }, 100);
+        }
+      }
     }
   }
   
@@ -878,16 +898,34 @@ document.addEventListener('DOMContentLoaded', () => {
   function adjustMobileLayout() {
     const messagesContainer = document.getElementById('messages-container');
     const chatContainer = document.getElementById('chat-container');
+    const messageInputContainer = document.querySelector('.message-input-container');
     
     // Прокручиваем к последнему сообщению после изменения размеров
     setTimeout(scrollToBottom, 300);
     
     // Предотвращаем скрытие поля ввода за пределами экрана
     if (window.innerWidth <= 768) {
+      // Всегда показываем поле ввода на мобильных устройствах
+      if (messageInputContainer) {
+        messageInputContainer.style.display = 'flex';
+        messageInputContainer.style.bottom = '0';
+      }
+      
+      // Добавляем обработчик для клика на любой элемент в контейнере чата
+      chatContainer.addEventListener('click', function() {
+        if (messageInputContainer) {
+          messageInputContainer.style.display = 'flex';
+          messageInputContainer.style.bottom = '0';
+        }
+      });
+      
       // Добавляем обработчик для контейнера сообщений, чтобы поле ввода не уходило за экран
       messagesContainer.addEventListener('scroll', function() {
         // Устанавливаем позицию поля ввода всегда внизу
-        document.querySelector('.message-input-container').style.bottom = '0';
+        if (messageInputContainer) {
+          messageInputContainer.style.display = 'flex';
+          messageInputContainer.style.bottom = '0';
+        }
       });
       
       // Предотвращаем стандартное поведение перетаскивания на мобильных устройствах
@@ -937,5 +975,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // Инициализация при загрузке страницы
   if (window.innerWidth <= 768) {
     adjustMobileLayout();
+  }
+
+  // Добавляем обработчики для боковой панели
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) {
+    sidebar.addEventListener('click', () => {
+      if (window.innerWidth <= 768) {
+        const messageInputContainer = document.querySelector('.message-input-container');
+        if (messageInputContainer) {
+          setTimeout(() => {
+            messageInputContainer.style.display = 'flex';
+            messageInputContainer.style.bottom = '0';
+          }, 100);
+        }
+      }
+    });
   }
 }); 
