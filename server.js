@@ -159,6 +159,11 @@ function saveImage(imageData) {
   }
 }
 
+// Обновление списка активных пользователей
+function updateUsers() {
+  io.emit('user_list', Array.from(activeUsers.values()));
+}
+
 // Socket.IO
 io.on('connection', (socket) => {
   console.log(`Новое соединение: ${socket.id}`);

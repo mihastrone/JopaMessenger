@@ -573,86 +573,135 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // ======== Обновление функции создания сообщения ========
   
-  // Обновленная функция создания элемента сообщения
+  // Обновленная функция создания элемента сообщения с дополнительными проверками
   function createMessageElement(message) {
-    // Если это системное сообщение, используем простую структуру
-    if (message.isSystem) {
-      const messageDiv = document.createElement('div');
-      messageDiv.classList.add('message', 'system-message');
-      messageDiv.textContent = message.text;
-      return messageDiv;
-    }
+    console.log('Создание элемента сообщения:', message);
     
-    // Клонируем шаблон сообщения
-    const messageNode = messageTemplate.content.cloneNode(true);
-    const messageDiv = messageNode.querySelector('.message');
-    messageDiv.dataset.messageId = message.id;
-    
-    // Определение, собственное ли это сообщение
-    if (message.sender === currentUser?.username || message.username === currentUser?.username) {
-      messageDiv.classList.add('own');
-    }
-    
-    // Применяем случайную анимацию входа для сообщения
-    applyRandomAnimation(messageDiv, 'entrance');
-    
-    const messageBubble = messageDiv.querySelector('.message-bubble');
-    const usernameSpan = messageDiv.querySelector('.username');
-    const timeSpan = messageDiv.querySelector('.time');
-    const messageText = messageDiv.querySelector('.message-text');
-    const messageImage = messageDiv.querySelector('.message-image');
-    
-    // Заполняем данные сообщения
-    usernameSpan.textContent = message.displayName || message.sender || message.username;
-    timeSpan.textContent = new Date(message.timestamp).toLocaleTimeString();
-    messageText.textContent = message.text;
-    
-    // Проверка на администратора
-    const isAdminMessage = message.isAdmin || 
-                          (message.displayName && message.displayName.includes('(Админ)'));
-    
-    if (isAdminMessage) {
-      usernameSpan.classList.add('admin');
-    }
-    
-    // Добавляем кнопку удаления, если это собственное сообщение или пользователь - админ
-    const isOwnMessage = message.username === currentUser?.username || message.sender === currentUser?.username;
-    
-    if (isOwnMessage || currentUser?.isAdmin) {
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'delete-message';
-      deleteButton.innerHTML = '<i class="fa fa-trash"></i>';
-      deleteButton.title = 'Удалить сообщение';
+    try {
+      // Если это системное сообщение, используем простую структуру
+      if (message.system || message.isSystem) {
+        console.log('Создаем системное сообщение');
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', 'system-message');
+        messageDiv.textContent = message.text;
+        return messageDiv;
+      }
       
-      deleteButton.addEventListener('click', () => {
-        if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-          socket.emit('delete_message', {
-            messageId: message.id,
-            roomId: currentRoom
-          });
+      // Проверяем, доступен ли шаблон сообщения
+      if (!messageTemplate) {
+        console.error('Шаблон сообщения не найден');
+        // Создаем простую структуру, если шаблон недоступен
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        messageDiv.innerHTML = `
+          <div class="message-bubble">
+            <div class="message-meta">
+              <span class="username">${message.displayName || message.sender || message.username || 'Пользователь'}</span>
+              <span class="time">${new Date(message.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <div class="message-text">${message.text || ''}</div>
+          </div>
+        `;
+        return messageDiv;
+      }
+      
+      // Клонируем шаблон сообщения
+      console.log('Клонируем шаблон сообщения');
+      const messageNode = messageTemplate.content.cloneNode(true);
+      const messageDiv = messageNode.querySelector('.message');
+      
+      if (!messageDiv) {
+        console.error('Не удалось найти элемент сообщения в шаблоне');
+        return null;
+      }
+      
+      messageDiv.dataset.messageId = message.id || generateId();
+      
+      // Определение, собственное ли это сообщение
+      if (message.sender === currentUser?.username || message.username === currentUser?.username) {
+        messageDiv.classList.add('own');
+      }
+      
+      // Применяем случайную анимацию входа для сообщения
+      applyRandomAnimation(messageDiv, 'entrance');
+      
+      const messageBubble = messageDiv.querySelector('.message-bubble');
+      const usernameSpan = messageDiv.querySelector('.username');
+      const timeSpan = messageDiv.querySelector('.time');
+      const messageText = messageDiv.querySelector('.message-text');
+      const messageImage = messageDiv.querySelector('.message-image');
+      
+      if (!messageBubble || !usernameSpan || !timeSpan || !messageText) {
+        console.error('Структура шаблона сообщения нарушена');
+        return null;
+      }
+      
+      // Заполняем данные сообщения
+      usernameSpan.textContent = message.displayName || message.sender || message.username || 'Пользователь';
+      timeSpan.textContent = message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+      messageText.textContent = message.text || '';
+      
+      // Проверка на администратора
+      const isAdminMessage = message.isAdmin || 
+                           (message.displayName && message.displayName.includes('(Админ)'));
+      
+      if (isAdminMessage) {
+        usernameSpan.classList.add('admin');
+      }
+      
+      // Добавляем кнопку удаления, если это собственное сообщение или пользователь - админ
+      const isOwnMessage = message.username === currentUser?.username || message.sender === currentUser?.username;
+      
+      if (isOwnMessage || currentUser?.isAdmin) {
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete-message';
+        deleteButton.innerHTML = '<i class="fa fa-trash"></i>';
+        deleteButton.title = 'Удалить сообщение';
+        
+        deleteButton.addEventListener('click', () => {
+          if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
+            socket.emit('delete_message', {
+              messageId: message.id,
+              roomId: currentRoom
+            });
+          }
+        });
+        
+        messageDiv.querySelector('.message-meta').appendChild(deleteButton);
+      }
+      
+      // Если есть изображение и контейнер для изображения
+      if (message.image && messageImage) {
+        const img = messageImage.querySelector('img');
+        if (img) {
+          img.src = message.image;
+          img.alt = 'Вложенное изображение';
+          img.addEventListener('click', () => openImageModal(message.image));
         }
-      });
+      } else if (messageImage) {
+        // Если изображения нет, скрываем контейнер
+        messageImage.style.display = 'none';
+      }
       
-      messageDiv.querySelector('.message-meta').appendChild(deleteButton);
+      // Если есть реакции, добавляем их
+      if (message.reactions) {
+        updateMessageReactions(message.id, message.reactions);
+      }
+      
+      return messageDiv;
+    } catch (error) {
+      console.error('Ошибка при создании элемента сообщения:', error);
+      // Создаем простой запасной вариант в случае ошибки
+      const fallbackDiv = document.createElement('div');
+      fallbackDiv.classList.add('message');
+      fallbackDiv.textContent = message.text || 'Сообщение';
+      return fallbackDiv;
     }
-    
-    // Если есть изображение
-    if (message.image) {
-      const img = messageImage.querySelector('img');
-      img.src = message.image;
-      img.alt = 'Вложенное изображение';
-      img.addEventListener('click', () => openImageModal(message.image));
-    } else {
-      // Если изображения нет, скрываем контейнер
-      messageImage.style.display = 'none';
-    }
-    
-    // Если есть реакции, добавляем их
-    if (message.reactions) {
-      updateMessageReactions(message.id, message.reactions);
-    }
-    
-    return messageDiv;
+  }
+  
+  // Вспомогательная функция для генерации ID, если сообщение не имеет ID
+  function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
   }
   
   // Функция для применения случайной анимации
@@ -697,6 +746,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Обновленный обработчик получения сообщения
   socket.on('chat_message', (message) => {
+    console.log('Получено сообщение:', message);
     const messageEl = displayMessage(message);
     
     // Подсвечиваем новое сообщение, если оно не от текущего пользователя
@@ -739,21 +789,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Модифицированная функция отображения сообщения, теперь возвращает созданный элемент
+  // Модифицированная функция отображения сообщения, теперь возвращает созданный элемент и включает логирование
   function displayMessage(message) {
+    console.log('Отображение сообщения:', message);
+    
+    // Проверяем наличие необходимых данных
+    if (!message) {
+      console.error('Не удалось отобразить сообщение: отсутствуют данные');
+      return null;
+    }
+    
     // Проверяем принадлежность сообщения текущей комнате
     if (message.roomId && message.roomId !== currentRoom) {
+      console.log(`Сообщение для другой комнаты: ${message.roomId}, текущая комната: ${currentRoom}`);
       return null;
     }
     
     // Если это сообщение из другой комнаты, проигрываем уведомление
     if (!isWindowActive) {
+      console.log('Проигрываем звук уведомления, окно неактивно');
       playNotificationSound();
     }
     
     // Создаем элемент сообщения
     const messageElement = createMessageElement(message);
     
+    if (!messageElement) {
+      console.error('Не удалось создать элемент сообщения');
+      return null;
+    }
+    
+    console.log('Добавляем сообщение в контейнер');
     messagesContainer.appendChild(messageElement);
     scrollToBottom();
     
@@ -827,13 +893,20 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Получение истории сообщений комнаты
   socket.on('room_messages', (data) => {
-    if (data.roomId === currentRoom) {
-      messagesContainer.innerHTML = '';
+    console.log('Получены сообщения комнаты:', data.roomId);
+    
+    // Очищаем текущие сообщения
+    messagesContainer.innerHTML = '';
+    
+    // Отображаем сообщения
+    if (data.messages && data.messages.length > 0) {
       data.messages.forEach(message => {
         displayMessage(message);
       });
-      scrollToBottom();
     }
+    
+    // Прокручиваем к последнему сообщению
+    scrollToBottom();
   });
   
   // Обновление списка пользователей
@@ -842,8 +915,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Обработчик ошибок
-  socket.on('error', (data) => {
-    alert('Ошибка: ' + data.message);
+  socket.on('error', (error) => {
+    console.error('Ошибка сервера:', error);
+    showMessage(document.getElementById('login-message'), error.message, 'error');
   });
   
   // Запрос разрешения на уведомления (для браузерных уведомлений)
@@ -1293,4 +1367,18 @@ document.addEventListener('DOMContentLoaded', () => {
       usersList.appendChild(userItem);
     });
   }
+
+  // Обработчики Socket.IO
+  socket.on('connect', () => {
+    console.log('Соединение с сервером установлено');
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Соединение с сервером потеряно');
+  });
+
+  socket.on('error', (error) => {
+    console.error('Ошибка сервера:', error);
+    showMessage(document.getElementById('login-message'), error.message, 'error');
+  });
 }); 
