@@ -670,14 +670,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // Устанавливаем флаг для распознавания системных сообщений
         messageDiv.dataset.system = 'true';
         
-        // Проверяем, содержит ли сообщение упоминание администратора
-        if (message.text && (
-            message.text.includes('администратор') || 
-            message.text.includes('Админ') || 
-            message.text.includes('удалено администратор')
-          )) {
-          console.log('Обнаружено системное сообщение, связанное с администратором');
-          messageDiv.dataset.adminSystem = 'true';
+        // Добавляем идентификатор сообщения, если есть
+        if (message.id) {
+          messageDiv.dataset.messageId = message.id;
+        }
+        
+        // Проверяем тип системного сообщения
+        if (message.text) {
+          if (message.text.includes('вошел в чат')) {
+            messageDiv.dataset.joinMessage = 'true';
+          } else if (message.text.includes('вышел из чата')) {
+            messageDiv.dataset.leaveMessage = 'true';
+          } else if (message.text.includes('присоединился к комнате')) {
+            messageDiv.dataset.roomJoinMessage = 'true';
+          } else if (message.text.includes('администратор') || 
+                    message.text.includes('Админ') || 
+                    message.text.includes('удалено администратор')) {
+            messageDiv.dataset.adminSystem = 'true';
+          }
         }
         
         return messageDiv;
@@ -933,12 +943,28 @@ document.addEventListener('DOMContentLoaded', () => {
     messagesContainer.appendChild(messageElement);
     scrollToBottom();
     
-    // Автоматическое скрытие системных сообщений через 10 секунд
-    if (message.system || message.isSystem || 
-        (messageElement.dataset && (messageElement.dataset.system === 'true' || messageElement.dataset.adminSystem === 'true')) ||
-        (messageElement.className && messageElement.className.includes('system-message'))) {
+    // Определяем, является ли сообщение системным
+    const isSystemMessage = message.system || message.isSystem || 
+      (messageElement.dataset && (messageElement.dataset.system === 'true')) ||
+      (messageElement.className && messageElement.className.includes('system-message'));
+    
+    // Если это системное сообщение, настраиваем его автоматическое скрытие
+    if (isSystemMessage) {
+      let timeout = 10000; // стандартное время для системных сообщений - 10 секунд
       
-      console.log('Настраиваем автоматическое скрытие системного сообщения');
+      // Устанавливаем разное время для разных типов системных сообщений
+      if (messageElement.dataset) {
+        if (messageElement.dataset.joinMessage === 'true' || 
+            messageElement.dataset.leaveMessage === 'true') {
+          timeout = 8000; // 8 секунд для сообщений о входе и выходе из чата
+        } else if (messageElement.dataset.roomJoinMessage === 'true') {
+          timeout = 7000; // 7 секунд для сообщений о присоединении к комнате
+        } else if (messageElement.dataset.adminSystem === 'true') {
+          timeout = 12000; // 12 секунд для сообщений, связанных с администраторами
+        }
+      }
+      
+      console.log(`Настраиваем автоматическое скрытие системного сообщения через ${timeout/1000} секунд`);
       
       setTimeout(() => {
         if (messageElement.parentNode) {
@@ -952,7 +978,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }, { once: true });
         }
-      }, 10000); // 10 секунд
+      }, timeout);
     }
     
     return messageElement;

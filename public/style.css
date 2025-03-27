@@ -647,6 +647,7 @@ button:hover {
   transform: scale(1.02);
 }
 
+/* Стили для системного сообщения */
 .system-message {
   text-align: center;
   padding: 4px 8px;
@@ -656,6 +657,38 @@ button:hover {
   font-style: italic;
   color: #666;
   animation: fadeIn 0.4s ease-out forwards;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Анимация удаления для сообщений и элементов */
+.deleting {
+  animation: fadeOut 0.8s ease-out forwards !important;
+  pointer-events: none; /* Предотвращение взаимодействия с удаляемым элементом */
+}
+
+@keyframes fadeOut {
+  0% { opacity: 1; transform: translateY(0); }
+  30% { opacity: 0.7; }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+/* Специальные стили для разных типов системных сообщений */
+.message[data-join-message="true"] {
+  color: #37916f;
+}
+
+.message[data-leave-message="true"] {
+  color: #975c5c;
+}
+
+.message[data-room-join-message="true"] {
+  color: #4d6c88;
+}
+
+.message[data-admin-system="true"] {
+  color: #d05527;
+  font-weight: 500;
 }
 
 /* Модальное окно */
