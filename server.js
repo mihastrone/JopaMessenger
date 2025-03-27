@@ -646,20 +646,20 @@ io.on('connection', (socket) => {
     
     // Базовая валидация
     if (!username || !password) {
-        socket.emit('register_response', { 
-            success: false, 
-            message: 'Необходимо указать имя пользователя и пароль' 
-        });
-        return;
+      socket.emit('register_response', { 
+        success: false, 
+        message: 'Необходимо указать имя пользователя и пароль' 
+      });
+      return;
     }
     
     // Проверяем, существует ли уже такой пользователь
     if (userDatabase[username]) {
-        socket.emit('register_response', { 
-            success: false, 
-            message: 'Пользователь с таким именем уже существует' 
-        });
-        return;
+      socket.emit('register_response', { 
+        success: false, 
+        message: 'Пользователь с таким именем уже существует' 
+      });
+      return;
     }
     
     try {
@@ -667,7 +667,7 @@ io.on('connection', (socket) => {
         const { salt, hash } = hashPassword(password);
         
         // Создаем запись о пользователе
-        userDatabase[username] = {
+    userDatabase[username] = {
             displayName: displayName || username,
             salt,
             hash,
@@ -693,26 +693,26 @@ io.on('connection', (socket) => {
                     throw new Error('Неверный формат изображения аватара');
                 }
                 
-                // Конвертируем base64 в бинарные данные
-                const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
-                const buffer = Buffer.from(base64Data, 'base64');
-                
-                // Генерируем уникальное имя файла
-                const filename = `${username}_${Date.now()}.jpg`;
-                const avatarPath = path.join(AVATARS_DIR, filename);
-                
+      // Конвертируем base64 в бинарные данные
+      const base64Data = avatar.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      // Генерируем уникальное имя файла
+      const filename = `${username}_${Date.now()}.jpg`;
+      const avatarPath = path.join(AVATARS_DIR, filename);
+      
                 // Сохраняем файл синхронно
                 fs.writeFileSync(avatarPath, buffer);
                 console.log(`Аватар для ${username} успешно сохранен: ${avatarPath}`);
                 
                 // Сохраняем путь к аватару
-                userAvatars[username] = `/uploads/avatars/${filename}`;
+          userAvatars[username] = `/uploads/avatars/${filename}`;
             } catch (error) {
                 console.error(`Ошибка при обработке аватара для ${username}:`, error);
                 // В случае ошибки используем аватар по умолчанию
                 userAvatars[username] = '/uploads/default-avatar.png';
-            }
-        } else {
+        }
+    } else {
             // Если аватары отключены или аватар не предоставлен
             userAvatars[username] = disableAvatars ? null : '/uploads/default-avatar.png';
         }
@@ -723,13 +723,13 @@ io.on('connection', (socket) => {
         
         // Сохраняем все данные
         saveAllData();
-        
-        // Отправляем успешный ответ
-        socket.emit('register_response', { 
-            success: true, 
-            message: 'Регистрация успешна! Теперь вы можете войти.',
-            avatarUrl: userAvatars[username]
-        });
+    
+    // Отправляем успешный ответ
+    socket.emit('register_response', { 
+      success: true, 
+      message: 'Регистрация успешна! Теперь вы можете войти.',
+      avatarUrl: userAvatars[username]
+    });
         
         console.log(`Регистрация пользователя ${username} завершена успешно`);
     } catch (error) {
@@ -1461,7 +1461,7 @@ io.on('connection', (socket) => {
         message: 'Регистрация успешна! Теперь вы можете войти.',
         avatarUrl: disableAvatars ? null : userAvatars[username]
       });
-    } catch (error) {
+  } catch (error) {
       console.error('Ошибка при упрощенной регистрации:', error);
       socket.emit('register_response', { 
         success: false, 

@@ -403,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadThemeSettings();
             } else {
                 // Показываем сообщение об ошибке
-                showMessage(result.message || 'Ошибка аутентификации', 'error');
+                showMessage(result.message, 'error');
             }
         });
         
@@ -1856,5 +1856,35 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Прокручиваем к последнему сообщению
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    // Функция для отображения сообщений
+    function showMessage(message, type = 'info') {
+        console.log(`Отображение сообщения типа ${type}:`, message);
+        
+        // Находим элемент для сообщения
+        const messageElement = document.getElementById('login-message') || document.getElementById('register-message');
+        if (!messageElement) {
+            console.error('Элемент для отображения сообщения не найден');
+            return;
+        }
+        
+        // Устанавливаем текст сообщения
+        messageElement.textContent = message;
+        
+        // Удаляем все классы стилей
+        messageElement.classList.remove('success', 'error', 'info');
+        
+        // Добавляем соответствующий класс
+        messageElement.classList.add(type);
+        
+        // Показываем элемент
+        messageElement.style.display = 'block';
+        
+        // Автоматически скрываем через 5 секунд
+        setTimeout(() => {
+            messageElement.style.display = 'none';
+            messageElement.textContent = '';
+        }, 5000);
     }
 }); 
