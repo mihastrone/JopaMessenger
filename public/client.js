@@ -456,9 +456,15 @@ document.addEventListener('DOMContentLoaded', () => {
     scrollToBottom();
   }
   
-  // Прокрутка чата вниз
+  // Функция для прокрутки к последнему сообщению
   function scrollToBottom() {
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    const messagesContainer = document.getElementById('messages-container');
+    
+    // Плавная прокрутка с анимацией
+    messagesContainer.scrollTo({
+      top: messagesContainer.scrollHeight,
+      behavior: 'smooth'
+    });
   }
   
   // Обновление списка пользователей
@@ -855,4 +861,60 @@ document.addEventListener('DOMContentLoaded', () => {
       showRoomPasswordError(response.message || 'Неверный пароль');
     }
   });
+
+  // Обработчик события изменения размера окна для перерасчета высоты
+  window.addEventListener('resize', function() {
+    if (window.innerWidth <= 768) {
+      adjustMobileLayout();
+    }
+  });
+  
+  // Обработчик события изменения ориентации на мобильных устройствах
+  window.addEventListener('orientationchange', function() {
+    setTimeout(adjustMobileLayout, 200);
+  });
+  
+  // Функция для корректировки интерфейса на мобильных устройствах
+  function adjustMobileLayout() {
+    const messagesContainer = document.getElementById('messages-container');
+    const chatContainer = document.getElementById('chat-container');
+    
+    // Прокручиваем к последнему сообщению после изменения размеров
+    setTimeout(scrollToBottom, 300);
+    
+    // Решение проблемы с виртуальной клавиатурой
+    if (document.activeElement.tagName === 'TEXTAREA') {
+      const viewportHeight = window.innerHeight;
+      const keyboardHeight = window.outerHeight - window.innerHeight;
+      
+      if (keyboardHeight > 0) {
+        // Если клавиатура открыта, корректируем высоту
+        document.documentElement.style.setProperty('--viewport-height', `${viewportHeight}px`);
+      }
+    }
+  }
+  
+  // Обработчики для полей ввода на мобильных устройствах
+  messageInput.addEventListener('focus', function() {
+    if (window.innerWidth <= 768) {
+      // Небольшая задержка, чтобы клавиатура успела открыться
+      setTimeout(() => {
+        adjustMobileLayout();
+        scrollToBottom();
+      }, 300);
+    }
+  });
+  
+  messageInput.addEventListener('blur', function() {
+    if (window.innerWidth <= 768) {
+      // Возвращаем высоту viewport к исходной при закрытии клавиатуры
+      document.documentElement.style.setProperty('--viewport-height', '100vh');
+      setTimeout(adjustMobileLayout, 300);
+    }
+  });
+  
+  // Инициализация при загрузке страницы
+  if (window.innerWidth <= 768) {
+    adjustMobileLayout();
+  }
 }); 
