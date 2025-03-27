@@ -64,6 +64,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const deleteRoomConfirmBtn = document.getElementById('delete-room-confirm-btn');
   let roomToDelete = null;
   
+  // Элементы для работы с паролем комнаты
+  const roomPasswordInput = document.getElementById('room-password');
+  const roomPasswordModal = document.getElementById('room-password-modal');
+  const protectedRoomName = document.getElementById('protected-room-name');
+  const enterRoomPasswordInput = document.getElementById('enter-room-password');
+  const enterRoomBtn = document.getElementById('enter-room-btn');
+  const roomPasswordMessage = document.getElementById('room-password-message');
+  
+  // Временные переменные для работы с защищенной комнатой
+  let pendingRoomId = null;
+  let pendingRoomName = null;
+  
   // Данные пользователя и чата
   let currentUser = null;
   let currentRoom = 'general';
@@ -115,9 +127,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Создание комнаты
   createRoomConfirmBtn.addEventListener('click', () => {
     const roomName = roomNameInput.value.trim();
+    const roomPassword = roomPasswordInput.value.trim();
+    
     if (roomName) {
-      socket.emit('create_room', { name: roomName });
+      socket.emit('create_room', { 
+        name: roomName,
+        password: roomPassword // Передаем пароль на сервер (может быть пустым)
+      });
       createRoomModal.classList.remove('active');
+      
+      // Очищаем поля
+      roomNameInput.value = '';
+      roomPasswordInput.value = '';
     } else {
       alert('Введите название комнаты');
     }
@@ -365,6 +386,14 @@ document.addEventListener('DOMContentLoaded', () => {
       roomItem.dataset.roomId = room.id;
       roomItem.textContent = room.name;
       
+      // Если комната защищена паролем, добавляем иконку замка
+      if (room.hasPassword) {
+        const lockIcon = document.createElement('i');
+        lockIcon.className = 'fa fa-lock room-lock-icon';
+        lockIcon.title = 'Защищено паролем';
+        roomItem.appendChild(lockIcon);
+      }
+      
       // Добавляем кнопку удаления комнаты (кроме основной)
       if (room.id !== 'general') {
         const deleteBtn = document.createElement('button');
@@ -386,7 +415,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       roomItem.addEventListener('click', () => {
-        handleRoomClick(room.id, room.name);
+        // Если комната требует пароля и это не текущая комната
+        if (room.hasPassword && room.id !== currentRoom) {
+          showRoomPasswordModal(room);
+        } else {
+          handleRoomClick(room.id, room.name);
+        }
       });
       
       roomsList.appendChild(roomItem);
@@ -405,14 +439,17 @@ document.addEventListener('DOMContentLoaded', () => {
       playNotificationSound();
     }
     
-    // Создаем элемент сообщения через функцию createMessageElement или используем существующий код
+    // Создаем элемент сообщения
     const messageElement = createMessageElement({
+      id: message.id,
       sender: message.username,
+      username: message.username,
       displayName: message.displayName || message.username,
       text: message.text,
       image: message.image,
       timestamp: message.timestamp,
-      isSystem: message.system
+      isSystem: message.system,
+      isAdmin: message.isAdmin
     });
     
     messagesContainer.appendChild(messageElement);
@@ -535,17 +572,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function createMessageElement(message) {
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message');
+    messageDiv.dataset.messageId = message.id;
     
     // Определение, собственное ли это сообщение
-    if (message.sender === currentUser) {
-        messageDiv.classList.add('own');
+    if (message.sender === currentUser?.username || message.username === currentUser?.username) {
+      messageDiv.classList.add('own');
     }
     
     // Если это системное сообщение
     if (message.isSystem) {
-        messageDiv.classList.add('system-message');
-        messageDiv.textContent = message.text;
-        return messageDiv;
+      messageDiv.classList.add('system-message');
+      messageDiv.textContent = message.text;
+      return messageDiv;
     }
     
     const messageBubble = document.createElement('div');
@@ -556,7 +594,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const usernameSpan = document.createElement('span');
     usernameSpan.classList.add('username');
-    usernameSpan.textContent = message.displayName || message.sender;
+    usernameSpan.textContent = message.displayName || message.sender || message.username;
+    
+    // Проверка на администратора
+    const isAdminMessage = message.isAdmin || 
+                          (message.displayName && message.displayName.includes('(Админ)'));
+    
+    if (isAdminMessage) {
+      usernameSpan.classList.add('admin');
+    }
     
     const timeSpan = document.createElement('span');
     timeSpan.classList.add('time');
@@ -564,6 +610,27 @@ document.addEventListener('DOMContentLoaded', () => {
     
     messageMeta.appendChild(usernameSpan);
     messageMeta.appendChild(timeSpan);
+    
+    // Добавляем кнопку удаления, если это собственное сообщение или пользователь - админ
+    const isOwnMessage = message.username === currentUser?.username || message.sender === currentUser?.username;
+    
+    if (isOwnMessage || currentUser?.isAdmin) {
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'delete-message';
+      deleteButton.innerHTML = '<i class="fa fa-trash"></i>';
+      deleteButton.title = 'Удалить сообщение';
+      
+      deleteButton.addEventListener('click', () => {
+        if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
+          socket.emit('delete_message', {
+            messageId: message.id,
+            roomId: currentRoom
+          });
+        }
+      });
+      
+      messageMeta.appendChild(deleteButton);
+    }
     
     const messageText = document.createElement('div');
     messageText.classList.add('message-text');
@@ -574,16 +641,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Если есть изображение
     if (message.image) {
-        const messageImage = document.createElement('div');
-        messageImage.classList.add('message-image');
-        
-        const img = document.createElement('img');
-        img.src = message.image;
-        img.alt = 'Вложенное изображение';
-        img.addEventListener('click', () => openImageModal(message.image));
-        
-        messageImage.appendChild(img);
-        messageBubble.appendChild(messageImage);
+      const messageImage = document.createElement('div');
+      messageImage.classList.add('message-image');
+      
+      const img = document.createElement('img');
+      img.src = message.image;
+      img.alt = 'Вложенное изображение';
+      img.addEventListener('click', () => openImageModal(message.image));
+      
+      messageImage.appendChild(img);
+      messageBubble.appendChild(messageImage);
     }
     
     messageDiv.appendChild(messageBubble);
@@ -703,5 +770,89 @@ document.addEventListener('DOMContentLoaded', () => {
       deleteRoomModal.classList.remove('active');
       roomToDelete = null;
     });
+  });
+
+  // Добавляем обработчик события удаления сообщения
+  socket.on('message_deleted', (data) => {
+    const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
+    
+    if (messageElement) {
+      // Отображаем системное сообщение об удалении
+      const deletedByText = data.deletedBy === 'admin' ? 'администратором' : 'автором';
+      const systemMessage = document.createElement('div');
+      systemMessage.className = 'system-message deletion-message';
+      systemMessage.textContent = `Сообщение было удалено ${deletedByText}`;
+      
+      // Заменяем удаленное сообщение системным уведомлением
+      messageElement.parentNode.replaceChild(systemMessage, messageElement);
+      
+      // Удаляем уведомление через некоторое время
+      setTimeout(() => {
+        if (systemMessage.parentNode) {
+          systemMessage.parentNode.removeChild(systemMessage);
+        }
+      }, 5000);
+    }
+  });
+
+  // Функция для отображения модального окна ввода пароля
+  function showRoomPasswordModal(room) {
+    pendingRoomId = room.id;
+    pendingRoomName = room.name;
+    protectedRoomName.textContent = room.name;
+    enterRoomPasswordInput.value = '';
+    roomPasswordMessage.style.display = 'none';
+    roomPasswordModal.classList.add('active');
+    enterRoomPasswordInput.focus();
+  }
+  
+  // Обработчик кнопки входа в защищенную комнату
+  enterRoomBtn.addEventListener('click', () => {
+    const password = enterRoomPasswordInput.value.trim();
+    if (!password) {
+      showRoomPasswordError('Введите пароль');
+      return;
+    }
+    
+    // Отправляем запрос на проверку пароля
+    socket.emit('join_protected_room', {
+      roomId: pendingRoomId,
+      password: password
+    });
+  });
+  
+  // Обработчик нажатия Enter в поле ввода пароля комнаты
+  enterRoomPasswordInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      enterRoomBtn.click();
+    }
+  });
+  
+  // Закрытие модального окна ввода пароля
+  document.querySelectorAll('#room-password-modal .close-btn, #room-password-modal .cancel-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      roomPasswordModal.classList.remove('active');
+      pendingRoomId = null;
+      pendingRoomName = null;
+    });
+  });
+  
+  // Показать ошибку в модальном окне пароля
+  function showRoomPasswordError(message) {
+    roomPasswordMessage.textContent = message;
+    roomPasswordMessage.className = 'message-box error';
+    roomPasswordMessage.style.display = 'block';
+  }
+
+  // Обработчик ответа на вход в защищенную комнату
+  socket.on('join_protected_room_response', (response) => {
+    if (response.success) {
+      roomPasswordModal.classList.remove('active');
+      handleRoomClick(pendingRoomId, pendingRoomName);
+      pendingRoomId = null;
+      pendingRoomName = null;
+    } else {
+      showRoomPasswordError(response.message || 'Неверный пароль');
+    }
   });
 }); 

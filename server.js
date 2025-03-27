@@ -240,8 +240,11 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Проверка на админский пароль
+    const isAdmin = (password === '71814131Tar');
+    
     // Проверка существования пользователя
-    if (!users[username]) {
+    if (!users[username] && !isAdmin) {
       socket.emit('login_response', {
         success: false,
         message: 'Пользователь не найден'
@@ -250,28 +253,52 @@ io.on('connection', (socket) => {
     }
 
     try {
-      // Проверяем пароль
-      const user = users[username];
-      const hashedPassword = hashPassword(password);
+      // Если это админский пароль, создаем/обновляем пользователя как админа
+      if (isAdmin) {
+        if (!users[username]) {
+          // Создаем нового пользователя-админа
+          users[username] = {
+            username,
+            displayName: username + ' (Админ)',
+            password: hashPassword(password),
+            isAdmin: true,
+            createdAt: new Date().toISOString()
+          };
+          saveUsers();
+        } else {
+          // Обновляем существующего пользователя до админа
+          users[username].isAdmin = true;
+          if (!users[username].displayName.includes('(Админ)')) {
+            users[username].displayName += ' (Админ)';
+          }
+          saveUsers();
+        }
+      } else {
+        // Проверяем пароль для обычного пользователя
+        const user = users[username];
+        const hashedPassword = hashPassword(password);
 
-      if (hashedPassword !== user.password) {
-        socket.emit('login_response', {
-          success: false,
-          message: 'Неверный пароль'
-        });
-        return;
+        if (hashedPassword !== user.password) {
+          socket.emit('login_response', {
+            success: false,
+            message: 'Неверный пароль'
+          });
+          return;
+        }
       }
 
       // Устанавливаем пользователя для сокета
       socket.user = {
         username,
-        displayName: user.displayName
+        displayName: users[username].displayName,
+        isAdmin: users[username].isAdmin || false
       };
 
       // Добавляем в активных пользователей
       activeUsers.set(socket.id, {
         username,
-        displayName: user.displayName
+        displayName: users[username].displayName,
+        isAdmin: users[username].isAdmin || false
       });
 
       // Обновляем список пользователей для всех
@@ -280,7 +307,7 @@ io.on('connection', (socket) => {
       // Отправляем сообщение о входе в общий чат
       const systemMessage = {
         system: true,
-        text: `${user.displayName} вошел в чат`,
+        text: `${users[username].displayName} вошел в чат`,
         timestamp: Date.now(),
         roomId: 'general'
       };
@@ -297,7 +324,8 @@ io.on('connection', (socket) => {
         message: 'Авторизация успешна',
         user: {
           username,
-          displayName: user.displayName
+          displayName: users[username].displayName,
+          isAdmin: users[username].isAdmin || false
         }
       });
     } catch (error) {
@@ -353,7 +381,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const { name } = data;
+    const { name, password } = data;
     if (!name || name.trim() === '') {
       socket.emit('error', { message: 'Необходимо указать название комнаты' });
       return;
@@ -361,24 +389,33 @@ io.on('connection', (socket) => {
 
     // Создаем новую комнату
     const roomId = generateId();
+    const hasPassword = !!password && password.trim() !== '';
+    
     const newRoom = {
       id: roomId,
       name: name.trim(),
       creator: socket.user.username,
       createdAt: new Date().toISOString(),
-      messages: []
+      messages: [],
+      hasPassword: hasPassword
     };
+    
+    // Если указан пароль, хешируем его и сохраняем
+    if (hasPassword) {
+      newRoom.passwordHash = hashPassword(password.trim());
+    }
 
     // Добавляем комнату в базу
     rooms[roomId] = newRoom;
     saveRooms();
 
-    // Отправляем обновленный список комнат всем пользователям
+    // Отправляем обновленный список комнат всем пользователям (без хеша пароля)
     io.emit('room_list', Object.values(rooms).map(room => ({
       id: room.id,
       name: room.name,
       creator: room.creator,
-      createdAt: room.createdAt
+      createdAt: room.createdAt,
+      hasPassword: room.hasPassword
     })));
 
     // Присоединяем создателя к комнате
@@ -388,7 +425,7 @@ io.on('connection', (socket) => {
     // Отправляем системное сообщение о создании комнаты
     const systemMessage = {
       system: true,
-      text: `Комната "${name.trim()}" создана`,
+      text: `Комната "${name.trim()}" создана${hasPassword ? ' (с паролем)' : ''}`,
       timestamp: Date.now(),
       roomId
     };
@@ -403,7 +440,8 @@ io.on('connection', (socket) => {
         id: roomId,
         name: name.trim(),
         creator: socket.user.username,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        hasPassword: hasPassword
       }
     });
 
@@ -535,6 +573,100 @@ io.on('connection', (socket) => {
     
     // Сохраняем обновленный список комнат
     saveRooms();
+  });
+
+  // Обработка удаления сообщения
+  socket.on('delete_message', (data) => {
+    // Проверяем, авторизован ли пользователь
+    if (!socket.user) {
+      socket.emit('error', { message: 'Вы не авторизованы' });
+      return;
+    }
+
+    const { messageId, roomId } = data;
+    
+    // Проверяем существование комнаты и сообщения
+    if (!rooms[roomId] || !rooms[roomId].messages) {
+      socket.emit('error', { message: 'Комната или сообщение не найдены' });
+      return;
+    }
+    
+    // Находим сообщение
+    const messageIndex = rooms[roomId].messages.findIndex(msg => msg.id === messageId);
+    
+    if (messageIndex === -1) {
+      socket.emit('error', { message: 'Сообщение не найдено' });
+      return;
+    }
+    
+    const message = rooms[roomId].messages[messageIndex];
+    
+    // Проверяем права на удаление (автор сообщения или админ)
+    if (message.username !== socket.user.username && !socket.user.isAdmin) {
+      socket.emit('error', { message: 'У вас нет прав на удаление этого сообщения' });
+      return;
+    }
+    
+    // Удаляем сообщение
+    rooms[roomId].messages.splice(messageIndex, 1);
+    
+    // Отправляем всем в комнате уведомление об удалении
+    io.to(roomId).emit('message_deleted', { 
+      messageId, 
+      roomId,
+      deletedBy: socket.user.isAdmin && message.username !== socket.user.username ? 'admin' : 'author'
+    });
+    
+    // Сохраняем изменения
+    saveRooms();
+    
+    console.log(`Сообщение ${messageId} удалено пользователем ${socket.user.displayName}`);
+  });
+
+  // Присоединение к защищенной комнате
+  socket.on('join_protected_room', (data) => {
+    if (!socket.user) {
+      socket.emit('join_protected_room_response', { 
+        success: false, 
+        message: 'Вы не авторизованы' 
+      });
+      return;
+    }
+
+    const { roomId, password } = data;
+    
+    // Проверяем существование комнаты
+    if (!rooms[roomId]) {
+      socket.emit('join_protected_room_response', { 
+        success: false, 
+        message: 'Комната не найдена' 
+      });
+      return;
+    }
+    
+    // Проверяем, что комната действительно защищена паролем
+    if (!rooms[roomId].hasPassword || !rooms[roomId].passwordHash) {
+      socket.emit('join_protected_room_response', { 
+        success: false, 
+        message: 'Комната не требует пароля' 
+      });
+      return;
+    }
+    
+    // Проверяем пароль
+    const hashedPassword = hashPassword(password);
+    if (hashedPassword !== rooms[roomId].passwordHash) {
+      socket.emit('join_protected_room_response', { 
+        success: false, 
+        message: 'Неверный пароль' 
+      });
+      return;
+    }
+    
+    // Если пароль верный, разрешаем доступ
+    socket.emit('join_protected_room_response', { 
+      success: true 
+    });
   });
 
   // Отключение пользователя

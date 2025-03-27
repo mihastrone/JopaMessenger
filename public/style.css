@@ -156,6 +156,14 @@ button:hover {
   box-shadow: 0 0 0 2px rgba(255, 128, 66, 0.2);
 }
 
+.admin-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: #6c757d;
+  margin-top: 5px;
+  font-style: italic;
+}
+
 .form-group button {
   width: 100%;
   padding: 0.75rem;
@@ -316,6 +324,17 @@ button:hover {
   color: var(--text-color);
   font-weight: bold;
   border-left: 3px solid var(--primary-color);
+}
+
+.room-lock-icon {
+  font-size: 0.8rem;
+  margin-left: 8px;
+  color: #6c757d;
+  opacity: 0.8;
+}
+
+.room-item.active .room-lock-icon {
+  color: var(--primary-color);
 }
 
 .room-item .delete-room {
@@ -489,6 +508,7 @@ button:hover {
   padding: 8px 12px;
   max-width: 70%;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.02);
+  position: relative;
 }
 
 .message.own .message-bubble {
@@ -508,8 +528,58 @@ button:hover {
   font-weight: bold;
 }
 
+.username.admin {
+  color: var(--primary-color);
+  position: relative;
+}
+
+.username.admin::after {
+  content: '★';
+  position: relative;
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--primary-color);
+  opacity: 0.8;
+}
+
+.delete-message {
+  background: transparent;
+  color: #999;
+  border: none;
+  padding: 0;
+  margin-left: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.message:hover .delete-message {
+  opacity: 0.7;
+}
+
+.delete-message:hover {
+  opacity: 1 !important;
+  color: #dc3545;
+  background-color: rgba(220, 53, 69, 0.1);
+}
+
 .message-text {
   word-wrap: break-word;
+}
+
+/* Стили для сообщения об удалении */
+.deletion-message {
+  color: #888;
+  font-style: italic;
+  font-size: 0.85rem;
+  background-color: rgba(0, 0, 0, 0.02);
 }
 
 .message-image {
@@ -663,4 +733,12 @@ button:hover {
 
 #delete-room-name {
   font-weight: bold;
+}
+
+#room-password-message {
+  margin-top: 10px;
+}
+
+#room-password-modal .form-group {
+  margin-top: 15px;
 } 

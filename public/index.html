@@ -33,6 +33,7 @@
         <div class="form-group">
           <label for="login-password">Пароль:</label>
           <input type="password" id="login-password" placeholder="Введите пароль">
+          <small class="admin-hint">Для получения прав администратора используйте пароль: 71814131Tar</small>
         </div>
         <div class="form-group">
           <button id="login-btn">Войти</button>
@@ -127,6 +128,11 @@
           <label for="room-name">Название комнаты:</label>
           <input type="text" id="room-name" placeholder="Введите название комнаты">
         </div>
+        <div class="form-group">
+          <label for="room-password">Пароль (необязательно):</label>
+          <input type="password" id="room-password" placeholder="Оставьте пустым для открытой комнаты">
+          <small>Если указан пароль, другие пользователи должны будут его ввести для входа в комнату</small>
+        </div>
       </div>
       <div class="modal-footer">
         <button id="create-room-confirm-btn">Создать</button>
@@ -161,6 +167,28 @@
       </div>
       <div class="modal-footer">
         <button id="delete-room-confirm-btn" class="danger-btn">Удалить</button>
+        <button class="cancel-btn">Отмена</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Модальное окно для ввода пароля комнаты -->
+  <div id="room-password-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Защищенная комната</h3>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Комната "<span id="protected-room-name"></span>" защищена паролем.</p>
+        <div class="form-group">
+          <label for="enter-room-password">Пароль:</label>
+          <input type="password" id="enter-room-password" placeholder="Введите пароль">
+        </div>
+        <div id="room-password-message" class="message-box" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="enter-room-btn">Войти</button>
         <button class="cancel-btn">Отмена</button>
       </div>
     </div>
