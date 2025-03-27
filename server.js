@@ -1548,6 +1548,33 @@ io.on('connection', (socket) => {
       });
     }
   });
+
+  // Обработчик сообщений чата
+  socket.on('chat_message', (message) => {
+    console.log('Получено сообщение:', message);
+    
+    // Проверяем, авторизован ли пользователь
+    if (!socket.user) {
+        console.log('Попытка отправить сообщение неавторизованным пользователем');
+        return;
+    }
+    
+    // Добавляем информацию о пользователе
+    message.username = socket.user.username;
+    message.displayName = socket.user.displayName;
+    message.timestamp = Date.now();
+    
+    // Отправляем сообщение всем подключенным клиентам
+    io.emit('chat_message', message);
+    
+    // Сохраняем сообщение в истории
+    messages.push(message);
+    
+    // Ограничиваем историю последними 100 сообщениями
+    if (messages.length > 100) {
+        messages.shift();
+    }
+  });
 });
 
 // Функция очистки старых аватаров

@@ -227,10 +227,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const passwordConfirm = document.getElementById('register-password-confirm').value;
         const displayName = document.getElementById('register-display-name').value.trim() || username;
         const isSimpleMode = document.getElementById('simple-mode') ? document.getElementById('simple-mode').checked : false;
-        const disableAvatars = document.getElementById('disable-avatars') ? document.getElementById('disable-avatars').checked : false;
         
-        console.log('Нажата кнопка регистрации. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный') + 
-                    ', аватары: ' + (disableAvatars ? 'отключены' : 'включены'));
+        console.log('Нажата кнопка регистрации. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный'));
         
         // Проверки
         if (!username) {
@@ -252,9 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const registrationData = {
             username: username,
             password: password,
-            displayName: displayName,
-            avatar: disableAvatars ? null : currentAvatar,
-            disableAvatars: disableAvatars
+            displayName: displayName
         };
         
         // Отправка в зависимости от режима
@@ -272,10 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
         const isSimpleMode = document.getElementById('simple-mode') ? document.getElementById('simple-mode').checked : false;
-        const disableAvatars = document.getElementById('disable-avatars') ? document.getElementById('disable-avatars').checked : false;
         
-        console.log('Нажата кнопка входа. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный') +
-                    ', аватары: ' + (disableAvatars ? 'отключены' : 'включены'));
+        console.log('Нажата кнопка входа. Режим: ' + (isSimpleMode ? 'упрощенный' : 'стандартный'));
         
         if (!username) {
             alert('Пожалуйста, введите имя пользователя');
@@ -290,8 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Данные для отправки
         const loginData = {
             username: username,
-            password: password,
-            disableAvatars: disableAvatars
+            password: password
         };
         
         // Отправка в зависимости от режима
@@ -1465,10 +1458,10 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Инициализация пользовательского интерфейса');
         
         // Устанавливаем отображаемое имя пользователя
-        userDisplayNameElement.textContent = displayName || currentUsername;
-        
-        // Инициализируем обработчики для загрузки аватаров
-        setupAvatarHandlers();
+        const userDisplayNameElement = document.getElementById('current-user-name');
+        if (userDisplayNameElement) {
+            userDisplayNameElement.textContent = displayName || currentUsername;
+        }
         
         // Изначально показываем основной чат
         showGeneralChat();
@@ -1661,203 +1654,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     })();
 
-    // Функция для обработки аватара
-    function processAvatar(file, previewElement, updateServer = false) {
-        if (!file || file.type.indexOf('image') === -1) return;
-        
-        // Проверка размера файла
-        if (file.size > 2 * 1024 * 1024) { // 2 МБ максимум
-            alert('Файл слишком большой. Максимальный размер аватара: 2 МБ');
-            return;
-        }
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                // Создаем canvas для сжатия изображения
-                const canvas = document.createElement('canvas');
-                const MAX_SIZE = 200; // Максимальный размер аватара
-                
-                let width = img.width;
-                let height = img.height;
-                
-                // Уменьшаем размер, если необходимо
-                if (width > MAX_SIZE || height > MAX_SIZE) {
-                    const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
-                    width = Math.floor(width * ratio);
-                    height = Math.floor(height * ratio);
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                
-                const ctx = canvas.getContext('2d');
-                ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                // Создаем URL из canvas
-                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-                
-                // Обновляем превью
-                previewElement.src = dataURL;
-                
-                // Сохраняем аватар в глобальную переменную
-                avatarPreview = dataURL;
-                
-                if (updateServer) {
-                    // Обновляем текущий аватар
-                    currentAvatar = dataURL;
-                    // Сохраняем в localStorage
-                    localStorage.setItem('user_avatar', dataURL);
-                    
-                    // Если нужно обновить аватар на сервере и есть соединение
-                    if (socket && socket.connected) {
-                        socket.emit('update_avatar', { avatar: dataURL });
-                        console.log('Отправлен запрос на обновление аватара');
-                    }
-                }
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
-
-    // Функция для обработки загрузки аватара при регистрации
-    function setupAvatarHandlers() {
-        const registerAvatarUpload = document.getElementById('register-avatar-upload');
-        const registerAvatarPreview = document.getElementById('register-avatar-preview');
-        const changeAvatarUpload = document.getElementById('change-avatar-upload');
-        const currentUserAvatar = document.getElementById('current-user-avatar');
-        const currentUserName = document.getElementById('current-user-name');
-        
-        // Устанавливаем отображаемое имя в настройках
-        if (currentUserName && displayName) {
-            currentUserName.textContent = displayName;
-        }
-        
-        // Если есть сохраненный аватар, загружаем его
-        const savedAvatar = localStorage.getItem('user_avatar');
-        if (savedAvatar && currentUserAvatar) {
-            currentUserAvatar.src = savedAvatar;
-            currentAvatar = savedAvatar;
-        }
-        
-        if (registerAvatarUpload && registerAvatarPreview) {
-            registerAvatarUpload.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    processAvatar(file, registerAvatarPreview);
-                }
-            });
-        }
-        
-        if (changeAvatarUpload && currentUserAvatar) {
-            changeAvatarUpload.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    processAvatar(file, currentUserAvatar, true);
-                }
-            });
-        }
-    }
-
-    // Функция для отображения сообщения
-    function displayMessage(message) {
-        console.log('Отображение сообщения:', message);
-        
-        // Проверяем, системное ли это сообщение
-        if (message.system) {
-            const systemMsg = document.createElement('div');
-            systemMsg.className = 'system-message';
-            systemMsg.textContent = message.text;
-            messagesContainer.appendChild(systemMsg);
-            return;
-        }
-        
-        // Создаем элементы для отображения сообщения
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message';
-        
-        // Добавляем класс для собственных сообщений
-        if (message.username === currentUsername) {
-            messageElement.classList.add('own');
-        }
-        
-        // Создаем контейнер для аватара
-        const avatarElement = document.createElement('div');
-        avatarElement.className = 'message-avatar';
-        
-        // Создаем изображение аватара
-        const avatarImg = document.createElement('img');
-        avatarImg.src = message.avatar || '/uploads/default-avatar.png';
-        avatarImg.alt = message.displayName || message.username;
-        avatarElement.appendChild(avatarImg);
-        
-        // Создаем контейнер для содержимого сообщения
-        const contentWrapper = document.createElement('div');
-        contentWrapper.className = 'message-content-wrapper';
-        
-        // Создаем пузырь сообщения
-        const messageBubble = document.createElement('div');
-        messageBubble.className = 'message-bubble';
-        
-        // Добавляем метаданные сообщения (имя пользователя и время)
-        const metaElement = document.createElement('div');
-        metaElement.className = 'message-meta';
-        
-        // Имя пользователя
-        const usernameElement = document.createElement('span');
-        usernameElement.className = 'username';
-        usernameElement.textContent = message.displayName || message.username;
-        metaElement.appendChild(usernameElement);
-        
-        // Временная метка
-        const timestampElement = document.createElement('span');
-        timestampElement.className = 'timestamp';
-        
-        // Форматируем время
-        const messageTime = new Date(message.timestamp);
-        const hours = messageTime.getHours().toString().padStart(2, '0');
-        const minutes = messageTime.getMinutes().toString().padStart(2, '0');
-        timestampElement.textContent = `${hours}:${minutes}`;
-        
-        metaElement.appendChild(timestampElement);
-        messageBubble.appendChild(metaElement);
-        
-        // Добавляем текст сообщения
-        const textElement = document.createElement('div');
-        textElement.className = 'message-text';
-        textElement.textContent = message.text;
-        messageBubble.appendChild(textElement);
-        
-        // Если есть изображение, отображаем его
-        if (message.image) {
-            const imageElement = document.createElement('div');
-            imageElement.className = 'message-image';
-            const img = document.createElement('img');
-            img.src = message.image;
-            img.alt = 'Изображение';
-            img.addEventListener('click', () => {
-                // Открываем изображение в полном размере при клике
-                window.open(message.image, '_blank');
-            });
-            imageElement.appendChild(img);
-            messageBubble.appendChild(imageElement);
-        }
-        
-        // Собираем сообщение
-        contentWrapper.appendChild(messageBubble);
-        messageElement.appendChild(avatarElement);
-        messageElement.appendChild(contentWrapper);
-        
-        // Добавляем сообщение в контейнер
-        messagesContainer.appendChild(messageElement);
-        
-        // Прокручиваем к последнему сообщению
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
     // Функция для отображения сообщений
     function showMessage(message, type = 'info') {
         console.log(`Отображение сообщения типа ${type}:`, message);
@@ -1887,4 +1683,114 @@ document.addEventListener('DOMContentLoaded', () => {
             messageElement.textContent = '';
         }, 5000);
     }
+
+    // Функция для отображения сообщения в чате
+    function displayMessage(message) {
+        console.log('Отображение сообщения:', message);
+        
+        // Проверяем, системное ли это сообщение
+        if (message.system) {
+            const systemMsg = document.createElement('div');
+            systemMsg.className = 'system-message';
+            systemMsg.textContent = message.text;
+            messagesContainer.appendChild(systemMsg);
+            return;
+        }
+        
+        // Создаем элемент сообщения
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message';
+        
+        // Добавляем класс для собственных сообщений
+        if (message.username === currentUsername) {
+            messageElement.classList.add('own');
+        }
+        
+        // Создаем контейнер для содержимого сообщения
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'message-content-wrapper';
+        
+        // Создаем пузырь сообщения
+        const messageBubble = document.createElement('div');
+        messageBubble.className = 'message-bubble';
+        
+        // Добавляем метаданные сообщения (имя пользователя и время)
+        const metaElement = document.createElement('div');
+        metaElement.className = 'message-meta';
+        
+        // Имя пользователя
+        const usernameElement = document.createElement('span');
+        usernameElement.className = 'username';
+        usernameElement.textContent = message.displayName || message.username;
+        metaElement.appendChild(usernameElement);
+        
+        // Временная метка
+        const timestampElement = document.createElement('span');
+        timestampElement.className = 'timestamp';
+        timestampElement.textContent = new Date(message.timestamp).toLocaleTimeString();
+        metaElement.appendChild(timestampElement);
+        
+        messageBubble.appendChild(metaElement);
+        
+        // Добавляем текст сообщения
+        const textElement = document.createElement('div');
+        textElement.className = 'message-text';
+        textElement.textContent = message.text;
+        messageBubble.appendChild(textElement);
+        
+        // Если есть изображение, отображаем его
+        if (message.image) {
+            const imageElement = document.createElement('div');
+            imageElement.className = 'message-image';
+            const img = document.createElement('img');
+            img.src = message.image;
+            img.alt = 'Изображение';
+            img.addEventListener('click', () => {
+                window.open(message.image, '_blank');
+            });
+            imageElement.appendChild(img);
+            messageBubble.appendChild(imageElement);
+        }
+        
+        // Собираем сообщение
+        contentWrapper.appendChild(messageBubble);
+        messageElement.appendChild(contentWrapper);
+        
+        // Добавляем сообщение в контейнер
+        messagesContainer.appendChild(messageElement);
+        
+        // Прокручиваем к последнему сообщению
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    // Обработчик отправки сообщения
+    document.getElementById('send-message').addEventListener('click', () => {
+        const messageInput = document.getElementById('message-input');
+        const message = messageInput.value.trim();
+        
+        if (message) {
+            // Отправляем сообщение на сервер
+            socket.emit('chat_message', {
+                text: message,
+                username: currentUsername,
+                displayName: currentDisplayName,
+                timestamp: Date.now()
+            });
+            
+            // Очищаем поле ввода
+            messageInput.value = '';
+        }
+    });
+    
+    // Обработчик нажатия Enter в поле ввода
+    document.getElementById('message-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('send-message').click();
+        }
+    });
+    
+    // Обработчик получения сообщения от сервера
+    socket.on('chat_message', (message) => {
+        displayMessage(message);
+    });
 }); 

@@ -109,26 +109,10 @@
                     <div class="alert alert-info">
                         <strong>Временный режим!</strong> Сервер работает в упрощенном режиме регистрации.
                     </div>
-                    <div class="avatar-upload-container">
-                        <div class="avatar-preview">
-                            <img id="register-avatar-preview" src="/uploads/default-avatar.png" alt="Аватар">
-                        </div>
-                        <label for="register-avatar-upload" class="avatar-upload-label">
-                            <i class="fas fa-camera"></i> Выбрать аватар
-                            <input type="file" id="register-avatar-upload" accept="image/*" style="display: none;">
-                        </label>
-                    </div>
                     <input type="text" id="register-username" placeholder="Логин" maxlength="20">
                     <input type="text" id="register-display-name" placeholder="Отображаемое имя" maxlength="20">
                     <input type="password" id="register-password" placeholder="Пароль">
                     <input type="password" id="register-password-confirm" placeholder="Подтвердите пароль">
-                    <div class="form-group">
-                        <label class="checkbox-container">
-                            Отключить аватары
-                            <input type="checkbox" id="disable-avatars" name="disable-avatars">
-                            <span class="checkmark"></span>
-                        </label>
-                    </div>
                     <div class="form-group">
                         <label class="checkbox-container">
                             Упрощенный режим (без сохранения файлов)
@@ -176,13 +160,6 @@
                     <div class="settings-panel">
                         <h3>Настройки</h3>
                         <div class="current-user-info">
-                            <div class="user-avatar">
-                                <img id="current-user-avatar" src="/uploads/default-avatar.png" alt="Ваш аватар">
-                                <label for="change-avatar-upload" class="change-avatar-label">
-                                    <i class="fas fa-camera"></i>
-                                    <input type="file" id="change-avatar-upload" accept="image/*" style="display: none;">
-                                </label>
-                            </div>
                             <div class="user-name" id="current-user-name"></div>
                         </div>
                         <div class="setting-item">
