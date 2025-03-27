@@ -479,15 +479,28 @@ document.addEventListener('DOMContentLoaded', () => {
       // Сохраняем ссылку на активное сообщение
       activeMessageForReaction = messageEl;
       
-      // Позиционируем панель эмодзи у кнопки
+      // Получаем размеры и позицию кнопки
       const rect = btn.getBoundingClientRect();
-      emojiPicker.style.left = `${rect.left}px`;
-      emojiPicker.style.top = `${rect.bottom + 5}px`;
       
-      // Если панель слишком близко к правому краю, корректируем позицию
-      if (rect.left + emojiPicker.offsetWidth > window.innerWidth) {
-        emojiPicker.style.left = `${window.innerWidth - emojiPicker.offsetWidth - 10}px`;
+      // Выравниваем панель по правому краю кнопки
+      const emojiPickerWidth = 220; // Ширина панели эмодзи из CSS
+      
+      // Вычисляем позицию для панели эмодзи (сначала позиционируем по правому краю кнопки)
+      let leftPosition = rect.right - emojiPickerWidth;
+      
+      // Проверяем, не выходит ли панель за левый край экрана
+      if (leftPosition < 10) {
+        leftPosition = 10; // Минимальный отступ от левого края
       }
+      
+      // Проверяем, не выходит ли панель за правый край экрана
+      if (leftPosition + emojiPickerWidth > window.innerWidth - 10) {
+        leftPosition = window.innerWidth - emojiPickerWidth - 10;
+      }
+      
+      // Позиционируем панель
+      emojiPicker.style.left = `${leftPosition}px`;
+      emojiPicker.style.top = `${rect.bottom + 5}px`;
       
       // Показываем панель
       emojiPicker.classList.add('active');
