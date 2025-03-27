@@ -467,8 +467,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
     // Проверка клика на кнопку добавления реакции
     if (e.target.closest('.add-reaction-btn')) {
+      console.log('Клик на кнопку добавления реакции');
       const btn = e.target.closest('.add-reaction-btn');
       const messageEl = btn.closest('.message');
+      
+      console.log('Сообщение для реакции:', {
+        element: messageEl,
+        id: messageEl.dataset.messageId
+      });
       
       // Сохраняем ссылку на активное сообщение
       activeMessageForReaction = messageEl;
@@ -485,17 +491,26 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Показываем панель
       emojiPicker.classList.add('active');
+      console.log('Панель эмодзи показана');
       
       e.stopPropagation();
     }
     
     // Проверка клика на эмодзи в панели
     if (e.target.closest('.emoji-item')) {
+      console.log('Клик на эмодзи в панели');
       const emojiItem = e.target.closest('.emoji-item');
       const emoji = emojiItem.dataset.emoji;
       
+      console.log('Выбран эмодзи:', emoji);
+      
       if (activeMessageForReaction) {
         const messageId = activeMessageForReaction.dataset.messageId;
+        console.log('Отправка реакции на сервер:', {
+          messageId,
+          emoji,
+          roomId: currentRoom
+        });
         
         // Отправляем реакцию на сервер
         socket.emit('add_reaction', {
@@ -506,18 +521,28 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Скрываем панель эмодзи
         emojiPicker.classList.remove('active');
+      } else {
+        console.error('Активное сообщение для реакции не найдено');
       }
     }
     
     // Проверка клика на реакцию (для отмены)
     if (e.target.closest('.reaction')) {
+      console.log('Клик на существующую реакцию');
       const reactionEl = e.target.closest('.reaction');
       const messageEl = reactionEl.closest('.message');
       const messageId = messageEl.dataset.messageId;
       const emoji = reactionEl.dataset.emoji;
       
+      console.log('Данные реакции:', {
+        messageId,
+        emoji,
+        isActive: reactionEl.classList.contains('active')
+      });
+      
       // Проверяем, уже поставил ли пользователь эту реакцию
       if (reactionEl.classList.contains('active')) {
+        console.log('Отправка запроса на удаление реакции');
         // Отправляем запрос на удаление реакции
         socket.emit('remove_reaction', {
           messageId,
@@ -525,6 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
           roomId: currentRoom
         });
       } else {
+        console.log('Отправка запроса на добавление реакции');
         // Отправляем запрос на добавление реакции
         socket.emit('add_reaction', {
           messageId,
@@ -542,32 +568,75 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Обновление отображения реакций для сообщения
   function updateMessageReactions(messageId, reactions) {
+    console.log('Обновление реакций для сообщения:', messageId, reactions);
+    
     const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
-    if (!messageEl) return;
+    if (!messageEl) {
+      console.error(`Сообщение с ID ${messageId} не найдено в DOM`);
+      return;
+    }
     
     const reactionsContainer = messageEl.querySelector('.message-reactions');
+    if (!reactionsContainer) {
+      console.error(`Контейнер для реакций не найден в сообщении ${messageId}`);
+      return;
+    }
+    
+    console.log('Очищаем контейнер реакций');
     reactionsContainer.innerHTML = '';
     
     // Если нет реакций, просто выходим
-    if (!reactions || Object.keys(reactions).length === 0) return;
+    if (!reactions || Object.keys(reactions).length === 0) {
+      console.log('Реакций нет, выходим');
+      return;
+    }
+    
+    console.log('Добавляем реакции:', Object.keys(reactions));
+    
+    // Проверяем доступность шаблона реакций
+    if (!reactionTemplate) {
+      console.error('Шаблон реакций не найден в DOM');
+      return;
+    }
     
     // Добавляем каждую реакцию
     Object.entries(reactions).forEach(([emoji, users]) => {
-      // Клонируем шаблон реакции
-      const reactionNode = reactionTemplate.content.cloneNode(true);
-      const reactionEl = reactionNode.querySelector('.reaction');
+      console.log(`Добавление реакции ${emoji} (${users.length} пользователей)`);
       
-      // Заполняем данные реакции
-      reactionEl.dataset.emoji = emoji;
-      reactionEl.querySelector('.reaction-emoji').textContent = emoji;
-      reactionEl.querySelector('.reaction-count').textContent = users.length;
-      
-      // Проверяем, поставил ли текущий пользователь эту реакцию
-      if (users.includes(currentUser.username)) {
-        reactionEl.classList.add('active');
+      try {
+        // Клонируем шаблон реакции
+        const reactionNode = reactionTemplate.content.cloneNode(true);
+        const reactionEl = reactionNode.querySelector('.reaction');
+        
+        if (!reactionEl) {
+          console.error('Элемент реакции не найден в шаблоне');
+          return;
+        }
+        
+        // Заполняем данные реакции
+        reactionEl.dataset.emoji = emoji;
+        const emojiSpan = reactionEl.querySelector('.reaction-emoji');
+        const countSpan = reactionEl.querySelector('.reaction-count');
+        
+        if (!emojiSpan || !countSpan) {
+          console.error('Элементы эмодзи или счетчика не найдены в шаблоне реакции');
+          return;
+        }
+        
+        emojiSpan.textContent = emoji;
+        countSpan.textContent = users.length;
+        
+        // Проверяем, поставил ли текущий пользователь эту реакцию
+        if (users.includes(currentUser.username)) {
+          reactionEl.classList.add('active');
+          console.log(`Пользователь ${currentUser.username} поставил реакцию ${emoji}`);
+        }
+        
+        reactionsContainer.appendChild(reactionEl);
+        console.log(`Реакция ${emoji} добавлена в DOM`);
+      } catch (error) {
+        console.error(`Ошибка при добавлении реакции ${emoji}:`, error);
       }
-      
-      reactionsContainer.appendChild(reactionEl);
     });
   }
   
@@ -741,6 +810,17 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Получение обновлений реакций
   socket.on('reactions_updated', (data) => {
+    console.log('Получено событие reactions_updated:', data);
+    if (!data) {
+      console.error('Получены пустые данные о реакциях');
+      return;
+    }
+    
+    if (!data.messageId) {
+      console.error('ID сообщения отсутствует в данных о реакциях');
+      return;
+    }
+    
     updateMessageReactions(data.messageId, data.reactions);
   });
   
@@ -923,95 +1003,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Запрос разрешения на уведомления (для браузерных уведомлений)
   if (Notification && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission();
-  }
-
-  // Обновление дизайна сообщений в чате
-  function createMessageElement(message) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message');
-    messageDiv.dataset.messageId = message.id;
-    
-    // Определение, собственное ли это сообщение
-    if (message.sender === currentUser?.username || message.username === currentUser?.username) {
-      messageDiv.classList.add('own');
-    }
-    
-    // Если это системное сообщение
-    if (message.isSystem) {
-      messageDiv.classList.add('system-message');
-      messageDiv.textContent = message.text;
-      return messageDiv;
-    }
-    
-    const messageBubble = document.createElement('div');
-    messageBubble.classList.add('message-bubble');
-    
-    const messageMeta = document.createElement('div');
-    messageMeta.classList.add('message-meta');
-    
-    const usernameSpan = document.createElement('span');
-    usernameSpan.classList.add('username');
-    usernameSpan.textContent = message.displayName || message.sender || message.username;
-    
-    // Проверка на администратора
-    const isAdminMessage = message.isAdmin || 
-                          (message.displayName && message.displayName.includes('(Админ)'));
-    
-    if (isAdminMessage) {
-      usernameSpan.classList.add('admin');
-    }
-    
-    const timeSpan = document.createElement('span');
-    timeSpan.classList.add('time');
-    timeSpan.textContent = new Date(message.timestamp).toLocaleTimeString();
-    
-    messageMeta.appendChild(usernameSpan);
-    messageMeta.appendChild(timeSpan);
-    
-    // Добавляем кнопку удаления, если это собственное сообщение или пользователь - админ
-    const isOwnMessage = message.username === currentUser?.username || message.sender === currentUser?.username;
-    
-    if (isOwnMessage || currentUser?.isAdmin) {
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'delete-message';
-      deleteButton.innerHTML = '<i class="fa fa-trash"></i>';
-      deleteButton.title = 'Удалить сообщение';
-      
-      deleteButton.addEventListener('click', () => {
-        if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-          socket.emit('delete_message', {
-            messageId: message.id,
-            roomId: currentRoom
-          });
-        }
-      });
-      
-      messageMeta.appendChild(deleteButton);
-    }
-    
-    const messageText = document.createElement('div');
-    messageText.classList.add('message-text');
-    messageText.textContent = message.text;
-    
-    messageBubble.appendChild(messageMeta);
-    messageBubble.appendChild(messageText);
-    
-    // Если есть изображение
-    if (message.image) {
-      const messageImage = document.createElement('div');
-      messageImage.classList.add('message-image');
-      
-      const img = document.createElement('img');
-      img.src = message.image;
-      img.alt = 'Вложенное изображение';
-      img.addEventListener('click', () => openImageModal(message.image));
-      
-      messageImage.appendChild(img);
-      messageBubble.appendChild(messageImage);
-    }
-    
-    messageDiv.appendChild(messageBubble);
-    return messageDiv;
   }
 
   // Функция для открытия модального окна с изображением
