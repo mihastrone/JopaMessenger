@@ -882,6 +882,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Прокручиваем к последнему сообщению после изменения размеров
     setTimeout(scrollToBottom, 300);
     
+    // Предотвращаем скрытие поля ввода за пределами экрана
+    if (window.innerWidth <= 768) {
+      // Добавляем обработчик для контейнера сообщений, чтобы поле ввода не уходило за экран
+      messagesContainer.addEventListener('scroll', function() {
+        // Устанавливаем позицию поля ввода всегда внизу
+        document.querySelector('.message-input-container').style.bottom = '0';
+      });
+      
+      // Предотвращаем стандартное поведение перетаскивания на мобильных устройствах
+      messagesContainer.addEventListener('touchmove', function(e) {
+        // Если мы находимся в нижней части контейнера и пытаемся прокрутить дальше вниз
+        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
+        
+        // Если находимся близко к низу и пытаемся прокрутить дальше вниз
+        if (isAtBottom && e.touches[0].clientY < window.innerHeight - 100) {
+          // Не позволяем перетаскивать контент за пределы экрана
+          e.preventDefault();
+        }
+      }, { passive: false });
+    }
+    
     // Решение проблемы с виртуальной клавиатурой
     if (document.activeElement.tagName === 'TEXTAREA') {
       const viewportHeight = window.innerHeight;
